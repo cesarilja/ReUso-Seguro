@@ -1,0 +1,4 @@
+Tipografía Poppins, de Indian Type Foundry.
+Se distribuye con la licencia SIL Open Font License 1.1, que permite usarla
+e incluirla en proyectos como este.
+https://fonts.google.com/specimen/Poppins

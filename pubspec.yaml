@@ -1,0 +1,38 @@
+name: reuso_seguro
+description: "Transacciones de segunda mano, sin riesgo a estafas."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  # Conexión con Supabase: cuentas de usuario y, más adelante, los datos.
+  supabase_flutter: ^2.18.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Imágenes de la app. Cada carpeta se declara por separado.
+  assets:
+    - assets/images/
+    - assets/images/equipos/
+    - assets/images/pasos/
+
+  # Tipografía de la app.
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
