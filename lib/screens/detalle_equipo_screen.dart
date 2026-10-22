@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../models/equipo.dart';
+import '../services/pedido_service.dart';
+import '../services/sesion_service.dart';
 import '../tema.dart';
 import '../widgets/avisos.dart';
 import '../widgets/barra_superior.dart';
 import '../widgets/equipo_widgets.dart';
 import '../widgets/pegatina.dart';
 import '../widgets/pie_de_pagina.dart';
+import 'pago_screen.dart';
 
 /// Detalle de un equipo publicado (HU12).
 class DetalleEquipoScreen extends StatelessWidget {
@@ -102,16 +105,28 @@ class _InfoEquipo extends StatelessWidget {
   final Equipo equipo;
 
   /// Para comprar hay que tener cuenta: si no hay sesión, la pide primero
-  /// y luego devuelve a la persona a esta misma pantalla.
+  /// y luego devuelve a la persona a esta misma pantalla (HU14).
+  ///
+  /// Después crea el pedido en "Pendiente de pago" y abre la pantalla de
+  /// pago (HU12). El pago protegido es la HU01, del Sprint 2.
   Future<void> _comprar(BuildContext context) async {
     final listo = await asegurarSesion(context);
     if (!listo || !context.mounted) return;
 
-    // TODO(HU12 y HU01): crear aquí el pedido y pasar a la pantalla de pago.
-    mostrarAviso(
-      context,
-      'La compra con pago protegido estará disponible muy pronto.',
-    );
+    final usuario = SesionService.instancia.usuario;
+    if (usuario == null) return;
+
+    try {
+      final pedido = PedidoService.instancia.crearPedido(
+        equipo: equipo,
+        compradorId: usuario.id,
+      );
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => PagoScreen(pedido: pedido)),
+      );
+    } on ErrorDePedido catch (error) {
+      if (context.mounted) mostrarAviso(context, error.mensaje);
+    }
   }
 
   @override

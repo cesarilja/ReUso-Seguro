@@ -26,11 +26,17 @@ enum ResultadoRegistro {
   faltaConfirmarCorreo,
 }
 
+/// En qué campo del formulario hay que mostrar un error.
+enum CampoDeError { correo, contrasena, general }
+
 /// Error con un mensaje listo para mostrarle al usuario.
 class ErrorDeSesion implements Exception {
-  const ErrorDeSesion(this.mensaje);
+  const ErrorDeSesion(this.mensaje, {this.campo = CampoDeError.general});
 
   final String mensaje;
+
+  /// Dónde se muestra: debajo del correo, de la contraseña o en un recuadro.
+  final CampoDeError campo;
 }
 
 /// Maneja las cuentas: crear cuenta, iniciar sesión y cerrar sesión.
@@ -87,7 +93,7 @@ class SesionService extends ChangeNotifier {
           ? ResultadoRegistro.faltaConfirmarCorreo
           : ResultadoRegistro.sesionIniciada;
     } on AuthException catch (error) {
-      throw ErrorDeSesion(_traducir(error.message));
+      throw _traducir(error.message);
     } catch (_) {
       throw const ErrorDeSesion(_mensajeGenerico);
     }
@@ -103,7 +109,7 @@ class SesionService extends ChangeNotifier {
         password: contrasena,
       );
     } on AuthException catch (error) {
-      throw ErrorDeSesion(_traducir(error.message));
+      throw _traducir(error.message);
     } catch (_) {
       throw const ErrorDeSesion(_mensajeGenerico);
     }
@@ -117,28 +123,53 @@ class SesionService extends ChangeNotifier {
     }
   }
 
-  /// Supabase responde en inglés: aquí lo pasamos a mensajes nuestros.
-  String _traducir(String original) {
+  /// Supabase responde en inglés: aquí lo pasamos a mensajes nuestros y
+  /// decimos en qué campo mostrarlos.
+  ErrorDeSesion _traducir(String original) {
     final texto = original.toLowerCase();
 
     if (texto.contains('invalid login credentials')) {
-      return 'El correo o la contraseña no son correctos.';
+      // Por seguridad, Supabase no dice si falló el correo o la contraseña:
+      // así nadie puede averiguar qué correos tienen cuenta.
+      return const ErrorDeSesion(
+        'El correo o la contraseña no son correctos. Revisa que el correo '
+        'esté bien escrito y que la contraseña respete mayúsculas y '
+        'minúsculas.',
+      );
     }
-    if (texto.contains('already registered')) {
-      return 'Ya existe una cuenta con ese correo. Inicia sesión.';
+    if (texto.contains('already registered') ||
+        texto.contains('already been registered')) {
+      return const ErrorDeSesion(
+        'Ya existe una cuenta con este correo. Inicia sesión.',
+        campo: CampoDeError.correo,
+      );
     }
     if (texto.contains('not confirmed')) {
-      return 'Falta confirmar tu correo. Abre el mensaje que te enviamos.';
+      return const ErrorDeSesion(
+        'Falta confirmar tu correo. Abre el mensaje que te enviamos y luego '
+        'inicia sesión.',
+      );
     }
-    if (texto.contains('rate limit')) {
-      return 'Demasiados intentos. Espera unos minutos y prueba otra vez.';
+    if (texto.contains('rate limit') || texto.contains('too many')) {
+      return const ErrorDeSesion(
+        'Demasiados intentos. Espera unos minutos y prueba otra vez.',
+      );
     }
-    if (texto.contains('password') && texto.contains('at least')) {
-      return 'La contraseña es muy corta. Usa al menos 6 caracteres.';
+    if (texto.contains('password')) {
+      return const ErrorDeSesion(
+        'Esa contraseña no es segura. Usa al menos 8 caracteres con '
+        'mayúsculas, minúsculas y números.',
+        campo: CampoDeError.contrasena,
+      );
     }
-    if (texto.contains('invalid') && texto.contains('email')) {
-      return 'Ese correo no es válido. Revísalo y prueba otra vez.';
+    // Solo si dice que el correo es inválido (no, por ejemplo, si falló el
+    // envío del correo de confirmación).
+    if (texto.contains('email') && texto.contains('invalid')) {
+      return const ErrorDeSesion(
+        'Ese correo no es válido. Revísalo. Ejemplo: maria@gmail.com',
+        campo: CampoDeError.correo,
+      );
     }
-    return _mensajeGenerico;
+    return const ErrorDeSesion(_mensajeGenerico);
   }
 }
