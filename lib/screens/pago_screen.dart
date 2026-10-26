@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/pedido.dart';
 import '../tema.dart';
 import '../widgets/barra_superior.dart';
+import '../widgets/imagen_equipo.dart';
 import '../widgets/pegatina.dart';
 import '../widgets/pie_de_pagina.dart';
 
@@ -94,12 +95,10 @@ class _Contenido extends StatelessWidget {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.asset(
-                        equipo.imagen,
+                      child: SizedBox(
                         width: 84,
                         height: 84,
-                        fit: BoxFit.cover,
-                        filterQuality: FilterQuality.medium,
+                        child: ImagenEquipo(equipo: equipo),
                       ),
                     ),
                     const SizedBox(width: 16),

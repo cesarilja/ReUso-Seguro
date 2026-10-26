@@ -7,6 +7,7 @@ import '../tema.dart';
 import '../widgets/avisos.dart';
 import '../widgets/barra_superior.dart';
 import '../widgets/equipo_widgets.dart';
+import '../widgets/imagen_equipo.dart';
 import '../widgets/pegatina.dart';
 import '../widgets/pie_de_pagina.dart';
 import 'pago_screen.dart';
@@ -22,18 +23,7 @@ class DetalleEquipoScreen extends StatelessWidget {
     final margen = margenLateral(context);
     final pantallaAncha = MediaQuery.sizeOf(context).width >= 900;
 
-    final imagen = Pegatina(
-      radio: 24,
-      sombra: 8,
-      child: AspectRatio(
-        aspectRatio: 4 / 3,
-        child: Image.asset(
-          equipo.imagen,
-          fit: BoxFit.cover,
-          filterQuality: FilterQuality.medium,
-        ),
-      ),
-    );
+    final imagen = _Galeria(equipo: equipo);
     final info = _InfoEquipo(equipo: equipo);
 
     return Scaffold(
@@ -309,6 +299,107 @@ class _AvisoReservado extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Foto principal del equipo y, debajo, sus miniaturas para cambiarla.
+class _Galeria extends StatefulWidget {
+  const _Galeria({required this.equipo});
+
+  final Equipo equipo;
+
+  @override
+  State<_Galeria> createState() => _GaleriaState();
+}
+
+class _GaleriaState extends State<_Galeria> {
+  int _actual = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final equipo = widget.equipo;
+    final cantidad = equipo.fotos.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Pegatina(
+          radio: 24,
+          sombra: 8,
+          child: AspectRatio(
+            aspectRatio: 4 / 3,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Las fotos reales se ven completas, sin recortar.
+                ImagenEquipo(
+                  equipo: equipo,
+                  indice: _actual,
+                  ajuste: cantidad > 0 ? BoxFit.contain : BoxFit.cover,
+                ),
+                if (cantidad > 1)
+                  Positioned(
+                    right: 14,
+                    bottom: 14,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: ColoresApp.tinta,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'Foto ${_actual + 1} de $cantidad',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (cantidad > 1) ...[
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (var i = 0; i < cantidad; i++)
+                Semantics(
+                  button: true,
+                  label: 'Ver foto ${i + 1} de $cantidad',
+                  child: InkWell(
+                    onTap: () => setState(() => _actual = i),
+                    borderRadius: BorderRadius.circular(12),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      width: 84,
+                      height: 63,
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: i == _actual
+                              ? ColoresApp.orquidea
+                              : ColoresApp.tinta,
+                          width: i == _actual ? 3 : 2,
+                        ),
+                      ),
+                      child: ImagenEquipo(equipo: equipo, indice: i),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }

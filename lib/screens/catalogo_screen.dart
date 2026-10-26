@@ -24,7 +24,12 @@ class CatalogoScreen extends StatefulWidget {
 class _CatalogoScreenState extends State<CatalogoScreen> {
   final ScrollController _scroll = ScrollController();
   final GlobalKey _clavePortada = GlobalKey();
-  final List<Equipo> _equipos = const CatalogoService().obtenerEquipos();
+  late Future<List<Equipo>> _equipos = const CatalogoService().obtenerEquipos();
+
+  /// Vuelve a pedir los equipos (por ejemplo, después de un error).
+  void _recargar() {
+    setState(() => _equipos = const CatalogoService().obtenerEquipos());
+  }
 
   @override
   void dispose() {
@@ -57,6 +62,16 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
     );
   }
 
+  /// Un mensaje centrado en el lugar del catálogo.
+  Widget _sliverMensaje(double margen, Widget mensaje) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(margen, 0, margen, 64),
+        child: mensaje,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final margen = margenLateral(context);
@@ -76,34 +91,78 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                     child: _Portada(alVerEquipos: _verEquipos),
                   ),
                 ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(margen, 0, margen, 22),
-                    child: _CabeceraCatalogo(cantidad: _equipos.length),
-                  ),
-                ),
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(margen, 0, margen, 64),
-                  sliver: SliverGrid(
-                    // La cantidad de columnas se ajusta sola al ancho.
-                    gridDelegate:
-                        const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 300,
-                      mainAxisExtent: 340,
-                      crossAxisSpacing: 24,
-                      mainAxisSpacing: 24,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, indice) {
-                        final equipo = _equipos[indice];
-                        return TarjetaEquipo(
-                          equipo: equipo,
-                          alTocar: () => _abrirDetalle(equipo),
-                        );
-                      },
-                      childCount: _equipos.length,
-                    ),
-                  ),
+                // El catálogo llega de Supabase: mientras carga, si falla o
+                // si está vacío, se le dice al usuario qué está pasando.
+                FutureBuilder<List<Equipo>>(
+                  future: _equipos,
+                  builder: (context, resultado) {
+                    if (resultado.connectionState != ConnectionState.done) {
+                      return _sliverMensaje(
+                        margen,
+                        const _EstadoCatalogo(
+                          cargando: true,
+                          texto: 'Cargando equipos…',
+                        ),
+                      );
+                    }
+                    final error = resultado.error;
+                    if (error != null) {
+                      return _sliverMensaje(
+                        margen,
+                        _EstadoCatalogo(
+                          texto: error is ErrorDeCatalogo
+                              ? error.mensaje
+                              : 'No pudimos cargar los equipos.',
+                          alReintentar: _recargar,
+                        ),
+                      );
+                    }
+                    final equipos = resultado.data ?? const <Equipo>[];
+                    if (equipos.isEmpty) {
+                      return _sliverMensaje(
+                        margen,
+                        const _EstadoCatalogo(
+                          texto: 'Todavía no hay equipos publicados.',
+                        ),
+                      );
+                    }
+                    return SliverMainAxisGroup(
+                      slivers: [
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding:
+                                EdgeInsets.fromLTRB(margen, 0, margen, 22),
+                            child:
+                                _CabeceraCatalogo(cantidad: equipos.length),
+                          ),
+                        ),
+                        SliverPadding(
+                          padding:
+                              EdgeInsets.fromLTRB(margen, 0, margen, 64),
+                          sliver: SliverGrid(
+                            // La cantidad de columnas se ajusta sola.
+                            gridDelegate:
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 300,
+                              mainAxisExtent: 340,
+                              crossAxisSpacing: 24,
+                              mainAxisSpacing: 24,
+                            ),
+                            delegate: SliverChildBuilderDelegate(
+                              (context, indice) {
+                                final equipo = equipos[indice];
+                                return TarjetaEquipo(
+                                  equipo: equipo,
+                                  alTocar: () => _abrirDetalle(equipo),
+                                );
+                              },
+                              childCount: equipos.length,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 // El pie queda pegado abajo aunque haya poco contenido.
                 const SliverFillRemaining(
@@ -315,6 +374,65 @@ class _CabeceraCatalogo extends StatelessWidget {
           style: Tipos.pequeno.copyWith(fontSize: 15),
         ),
       ],
+    );
+  }
+}
+
+/// Lo que se ve en lugar del catálogo mientras carga, si falla o si está
+/// vacío (visibilidad del estado del sistema y recuperación de errores).
+class _EstadoCatalogo extends StatelessWidget {
+  const _EstadoCatalogo({
+    required this.texto,
+    this.cargando = false,
+    this.alReintentar,
+  });
+
+  final String texto;
+  final bool cargando;
+  final VoidCallback? alReintentar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+      decoration: BoxDecoration(
+        color: ColoresApp.nube,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          if (cargando)
+            const SizedBox(
+              width: 32,
+              height: 32,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: ColoresApp.orquidea,
+              ),
+            )
+          else
+            const Icon(
+              Icons.inventory_2_outlined,
+              size: 40,
+              color: ColoresApp.pizarra,
+            ),
+          const SizedBox(height: 16),
+          Text(
+            texto,
+            textAlign: TextAlign.center,
+            style: Tipos.cuerpo.copyWith(color: ColoresApp.tinta),
+          ),
+          if (alReintentar != null) ...[
+            const SizedBox(height: 20),
+            BotonPegatina(
+              texto: 'Reintentar',
+              icono: Icons.refresh,
+              alTocar: alReintentar!,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

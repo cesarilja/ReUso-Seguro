@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/equipo.dart';
 import '../tema.dart';
+import 'imagen_equipo.dart';
 import 'pegatina.dart';
 
 /// Etiqueta con el estado de la publicación: Disponible o Reservado.
@@ -76,11 +77,7 @@ class TarjetaEquipo extends StatelessWidget {
                 Opacity(
                   // Los reservados se ven apagados.
                   opacity: equipo.estaDisponible ? 1.0 : 0.45,
-                  child: Image.asset(
-                    equipo.imagen,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.medium,
-                  ),
+                  child: ImagenEquipo(equipo: equipo),
                 ),
                 Positioned(
                   left: 12,
