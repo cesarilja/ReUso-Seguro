@@ -52,5 +52,6 @@ Arquitectura en **capas cerradas** sobre un modelo cliente-servidor, con Supabas
 
 ## Diferencias con el documento de arquitectura (y por qué)
 
-- **El catálogo usa datos de prueba** en `CatalogoService`, no la tabla de PostgreSQL. La tabla se llena cuando exista la publicación de equipos (HU11, Sprint 2). Gracias al patrón Repository, ese cambio solo toca el servicio.
+- **El catálogo ya sale de Supabase**: la tabla `equipos` (PostgreSQL) guarda los datos y el almacén `equipos` (Storage) guarda las fotos; la tabla solo guarda la ruta de cada foto. El script está en `supabase/01_catalogo.sql`. Los 8 equipos de muestra tienen `es_demo = true` y se borran con `delete from public.equipos where es_demo;` cuando haya equipos reales (HU11). Gracias al patrón Repository, el cambio solo tocó `CatalogoService`.
+- **Seguridad del catálogo (RLS)**: cualquiera puede ver los equipos; cada vendedor solo puede publicar a su nombre y subir fotos a su propia carpeta. Nadie puede cambiar el estado «reservado» desde el navegador.
 - **Los pedidos se guardan en memoria** en `PedidoService`. Pasan a Supabase junto con el pago protegido (HU01). El cambio de estado del pago lo hará el servidor (Edge Functions), nunca el navegador.
