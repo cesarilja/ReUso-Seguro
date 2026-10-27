@@ -24,6 +24,8 @@ class Equipo {
     required this.estadoDeclarado,
     required this.precio,
     required this.vendedor,
+    this.vendedorId,
+    this.categoria,
     this.fotos = const [],
     this.ilustracion,
     this.estado = EstadoPublicacion.disponible,
@@ -45,6 +47,8 @@ class Equipo {
       estadoDeclarado: fila['estado_declarado'] as String,
       precio: (fila['precio'] as num).toDouble(),
       vendedor: fila['vendedor_nombre'] as String,
+      vendedorId: fila['vendedor_id'] as String?,
+      categoria: fila['categoria'] as String?,
       fotos: rutas.map(urlDeFoto).toList(growable: false),
       ilustracion: fila['ilustracion'] as String?,
       estado: EstadoPublicacion.desde(fila['estado'] as String?),
@@ -62,6 +66,12 @@ class Equipo {
   final double precio;
 
   final String vendedor;
+
+  /// Cuenta de quien publicó el equipo (los de demostración no tienen).
+  final String? vendedorId;
+
+  /// Tipo de equipo: Laptop, Teléfono, Tablet... (HU11).
+  final String? categoria;
 
   /// Direcciones de las fotos reales del equipo (pueden ser varias).
   final List<String> fotos;

@@ -105,6 +105,10 @@ class _InfoEquipo extends StatelessWidget {
 
     final usuario = SesionService.instancia.usuario;
     if (usuario == null) return;
+    if (usuario.id == equipo.vendedorId) {
+      mostrarAviso(context, 'No puedes comprar un equipo que tú publicaste.');
+      return;
+    }
 
     try {
       final pedido = PedidoService.instancia.crearPedido(
@@ -166,8 +170,12 @@ class _InfoEquipo extends StatelessWidget {
         const SizedBox(height: 28),
         const _CompraProtegida(),
         const SizedBox(height: 28),
-        // Un equipo reservado no se puede comprar: no mostramos el botón.
-        if (equipo.estaDisponible)
+        // Un equipo reservado no se puede comprar, y el vendedor tampoco
+        // puede comprar el suyo: en esos casos no mostramos el botón.
+        if (SesionService.instancia.usuario?.id == equipo.vendedorId &&
+            equipo.vendedorId != null)
+          const _Aviso('Este equipo es tuyo. Así lo ven los compradores.')
+        else if (equipo.estaDisponible)
           BotonPegatina(
             texto: 'Comprar',
             icono: Icons.lock_outline,
@@ -175,7 +183,7 @@ class _InfoEquipo extends StatelessWidget {
             alTocar: () => _comprar(context),
           )
         else
-          const _AvisoReservado(),
+          const _Aviso('Este equipo ya está reservado por otro comprador.'),
       ],
     );
   }
@@ -272,8 +280,10 @@ class _PasoCorto extends StatelessWidget {
   }
 }
 
-class _AvisoReservado extends StatelessWidget {
-  const _AvisoReservado();
+class _Aviso extends StatelessWidget {
+  const _Aviso(this.texto);
+
+  final String texto;
 
   @override
   Widget build(BuildContext context) {
@@ -290,7 +300,7 @@ class _AvisoReservado extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Este equipo ya está reservado por otro comprador.',
+              texto,
               style: Tipos.pequeno.copyWith(
                 fontSize: 15,
                 color: ColoresApp.tinta,

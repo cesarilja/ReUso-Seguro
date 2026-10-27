@@ -32,6 +32,24 @@ flutter run -d chrome
 - Al iniciar sesión, si el correo o la contraseña no coinciden, el mensaje no dice cuál de los dos falló. Es a propósito: así nadie puede averiguar qué correos tienen cuenta (buena práctica de seguridad de OWASP).
 - «Comprar» crea un pedido en «Pendiente de pago» y abre la pantalla de pago. El pago protegido es la HU01 (Sprint 2).
 
+## Sprint 2 (en curso)
+
+| Historia | Puntos | Estado |
+|---|---|---|
+| HU11. Publicar un equipo | 5 | Hecha |
+
+- El catálogo se carga desde Supabase (tabla `equipos`) con fotos reales en Supabase Storage. Mientras carga dice «Cargando equipos…» y, si falla, ofrece «Reintentar».
+- **Publicar un equipo** (`lib/screens/publicar_screen.dart` y `lib/services/publicacion_service.dart`):
+  - pide iniciar sesión antes de abrir el formulario;
+  - **todos los datos son obligatorios**: título, tipo de equipo, precio, condición, detalles del estado, descripción y **de 3 a 6 fotos** (JPG, PNG o WEBP, hasta 5 MB cada una);
+  - cada error dice qué corregir debajo de su campo, y el contador de fotos se marca en verde al llegar a 3;
+  - la primera foto es la portada; se puede cambiar con la estrella o quitar cualquier foto;
+  - si hay datos sin publicar y la persona intenta salir, la app pregunta antes;
+  - al publicar, las fotos se suben a la carpeta del vendedor en Storage (`<id del vendedor>/...`) y el equipo se guarda en la tabla; aparece de una vez en el catálogo;
+  - si algo falla a mitad de camino, se borran las fotos subidas y no se publica nada;
+  - el vendedor no puede comprar su propio equipo.
+- La base de datos revisa las mismas reglas (`supabase/03_publicar.sql`): nadie puede publicar con datos incompletos ni a nombre de otro, aunque lo intente desde fuera de la app.
+
 ## Cómo cumple la arquitectura
 
 Arquitectura en **capas cerradas** sobre un modelo cliente-servidor, con Supabase como backend (BaaS). Cada capa solo usa la que tiene justo debajo: las pantallas nunca hablan directo con Supabase.
@@ -45,9 +63,9 @@ Arquitectura en **capas cerradas** sobre un modelo cliente-servidor, con Supabas
 
 | Patrón de diseño | Dónde está |
 |---|---|
-| Repository | `CatalogoService`, `PedidoService` y `SesionService`: las pantallas no saben de dónde vienen los datos |
+| Repository | `CatalogoService`, `PublicacionService`, `PedidoService` y `SesionService`: las pantallas no saben de dónde vienen los datos |
 | Singleton | `SesionService.instancia` y `PedidoService.instancia` |
-| Observer | `SesionService` avisa cuando alguien entra o sale y la barra superior se actualiza sola |
+| Observer | `SesionService` avisa cuando alguien entra o sale y la barra superior se actualiza sola; `CatalogoService.cambios` avisa cuando se publica un equipo y el catálogo se recarga |
 | Facade | `SesionService` esconde el cliente de Supabase y traduce sus errores al español |
 
 ## Diferencias con el documento de arquitectura (y por qué)

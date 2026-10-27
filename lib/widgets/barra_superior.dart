@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../screens/publicar_screen.dart';
 import '../services/sesion_service.dart';
 import '../tema.dart';
 import 'avisos.dart';
@@ -23,8 +24,10 @@ class BarraSuperior extends StatelessWidget {
     final listo = await asegurarSesion(context);
     if (!listo || !context.mounted) return;
 
-    // TODO(HU11): abrir aquí el formulario para publicar un equipo.
-    mostrarAviso(context, 'Publicar un equipo estará disponible muy pronto.');
+    // HU11: abre el formulario para publicar un equipo.
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const PublicarScreen()),
+    );
   }
 
   @override
