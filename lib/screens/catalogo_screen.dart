@@ -28,11 +28,20 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
 
   /// Vuelve a pedir los equipos (por ejemplo, después de un error).
   void _recargar() {
+    if (!mounted) return;
     setState(() => _equipos = const CatalogoService().obtenerEquipos());
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Cuando alguien publica un equipo, el catálogo se vuelve a cargar.
+    CatalogoService.cambios.addListener(_recargar);
+  }
+
+  @override
   void dispose() {
+    CatalogoService.cambios.removeListener(_recargar);
     _scroll.dispose();
     super.dispose();
   }

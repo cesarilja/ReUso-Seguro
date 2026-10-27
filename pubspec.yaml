@@ -12,6 +12,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   # Conexión con Supabase: cuentas de usuario y, más adelante, los datos.
   supabase_flutter: ^2.18.0
+  # Elegir fotos desde la computadora o el teléfono para publicar (HU11).
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:
