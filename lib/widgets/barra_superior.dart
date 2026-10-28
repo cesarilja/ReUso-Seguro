@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../screens/mis_compras_screen.dart';
 import '../screens/publicar_screen.dart';
 import '../services/sesion_service.dart';
 import '../tema.dart';
@@ -128,6 +129,11 @@ class _MenuUsuario extends StatelessWidget {
       tooltip: 'Tu cuenta',
       position: PopupMenuPosition.under,
       onSelected: (opcion) {
+        if (opcion == 'compras') {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const MisComprasScreen()),
+          );
+        }
         if (opcion == 'salir') SesionService.instancia.cerrarSesion();
       },
       itemBuilder: (context) => <PopupMenuEntry<String>>[
@@ -143,8 +149,20 @@ class _MenuUsuario extends StatelessWidget {
         ),
         const PopupMenuDivider(),
         const PopupMenuItem<String>(
+          value: 'compras',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.receipt_long_outlined),
+            title: Text('Mis compras'),
+          ),
+        ),
+        const PopupMenuItem<String>(
           value: 'salir',
-          child: Text('Cerrar sesión'),
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.logout),
+            title: Text('Cerrar sesión'),
+          ),
         ),
       ],
       child: Container(

@@ -37,6 +37,7 @@ flutter run -d chrome
 | Historia | Puntos | Estado |
 |---|---|---|
 | HU11. Publicar un equipo | 5 | Hecha |
+| HU01. Pago protegido (simulado) | 5 | Hecha |
 
 - El catálogo se carga desde Supabase (tabla `equipos`) con fotos reales en Supabase Storage. Mientras carga dice «Cargando equipos…» y, si falla, ofrece «Reintentar».
 - **Publicar un equipo** (`lib/screens/publicar_screen.dart` y `lib/services/publicacion_service.dart`):
@@ -49,6 +50,14 @@ flutter run -d chrome
   - si algo falla a mitad de camino, se borran las fotos subidas y no se publica nada;
   - el vendedor no puede comprar su propio equipo.
 - La base de datos revisa las mismas reglas (`supabase/03_publicar.sql`): nadie puede publicar con datos incompletos ni a nombre de otro, aunque lo intente desde fuera de la app.
+- **Pago protegido simulado** (HU01: `lib/screens/pago_screen.dart`, `lib/services/pedido_service.dart`):
+  - «Comprar» crea el pedido en Supabase en «Pendiente de pago» (HU12);
+  - el comprador elige cómo pagar (tarjeta, Pago Móvil o Zelle), confirma el monto en un diálogo y ve «Verificando el pago…» mientras se procesa;
+  - al pagar, el pedido pasa a «Pago en custodia», el equipo queda «Reservado» y se muestra un comprobante con referencia y la línea de tiempo del pedido;
+  - si el pago se rechaza (hay un interruptor para simularlo), se explica qué pasó, no se cobra nada y se puede reintentar;
+  - el pedido se puede cancelar mientras no se haya pagado;
+  - «Mis compras» (menú de la cuenta) lista los pedidos con su estado.
+- **El navegador nunca cambia el estado del pago ni la reserva**: lo hacen las funciones del servidor `crear_pedido`, `pagar_pedido` y `cancelar_pedido` (`supabase/04_pago_protegido.sql`), que bloquean el equipo mientras se paga para que dos personas no lo compren a la vez. **No se mueve dinero real.**
 
 ## Cómo cumple la arquitectura
 
@@ -72,4 +81,4 @@ Arquitectura en **capas cerradas** sobre un modelo cliente-servidor, con Supabas
 
 - **El catálogo ya sale de Supabase**: la tabla `equipos` (PostgreSQL) guarda los datos y el almacén `equipos` (Storage) guarda las fotos; la tabla solo guarda la ruta de cada foto. El script está en `supabase/01_catalogo.sql`. Los 8 equipos de muestra tienen `es_demo = true` y se borran con `delete from public.equipos where es_demo;` cuando haya equipos reales (HU11). Gracias al patrón Repository, el cambio solo tocó `CatalogoService`.
 - **Seguridad del catálogo (RLS)**: cualquiera puede ver los equipos; cada vendedor solo puede publicar a su nombre y subir fotos a su propia carpeta. Nadie puede cambiar el estado «reservado» desde el navegador.
-- **Los pedidos se guardan en memoria** en `PedidoService`. Pasan a Supabase junto con el pago protegido (HU01). El cambio de estado del pago lo hará el servidor (Edge Functions), nunca el navegador.
+- **Los pedidos ya están en Supabase** (tabla `pedidos`). El cambio de estado del pago lo hace el servidor con funciones de PostgreSQL (`security definer`) en lugar de Edge Functions: cumplen la misma regla (el navegador nunca cambia el estado) y son más simples para el MVP.
