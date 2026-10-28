@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../screens/mis_compras_screen.dart';
+import '../screens/panel_hub_screen.dart';
 import '../screens/publicar_screen.dart';
+import '../services/inspeccion_service.dart';
 import '../services/sesion_service.dart';
 import '../tema.dart';
 import 'avisos.dart';
@@ -84,7 +86,10 @@ class BarraSuperior extends StatelessWidget {
             const SizedBox(width: 16),
             // Se vuelve a dibujar cada vez que alguien entra o sale.
             ListenableBuilder(
-              listenable: SesionService.instancia,
+              listenable: Listenable.merge([
+                SesionService.instancia,
+                InspeccionService.instancia,
+              ]),
               builder: (context, _) {
                 final usuario = SesionService.instancia.usuario;
 
@@ -134,6 +139,11 @@ class _MenuUsuario extends StatelessWidget {
             MaterialPageRoute<void>(builder: (_) => const MisComprasScreen()),
           );
         }
+        if (opcion == 'hub') {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const PanelHubScreen()),
+          );
+        }
         if (opcion == 'salir') SesionService.instancia.cerrarSesion();
       },
       itemBuilder: (context) => <PopupMenuEntry<String>>[
@@ -148,6 +158,15 @@ class _MenuUsuario extends StatelessWidget {
           ),
         ),
         const PopupMenuDivider(),
+        if (InspeccionService.instancia.soyInspector)
+          const PopupMenuItem<String>(
+            value: 'hub',
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.fact_check_outlined),
+              title: Text('Panel del Hub'),
+            ),
+          ),
         const PopupMenuItem<String>(
           value: 'compras',
           child: ListTile(

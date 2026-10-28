@@ -28,6 +28,9 @@ class PedidoService extends ChangeNotifier {
 
   SupabaseClient get _cliente => Supabase.instance.client;
 
+  /// Lo usan otros servicios (por ejemplo, el Hub) cuando cambian un pedido.
+  void avisarCambio() => notifyListeners();
+
   /// HU12: crea el pedido en «Pendiente de pago» (o reutiliza el que ya
   /// estaba pendiente para ese equipo).
   Future<Pedido> crearPedido(Equipo equipo) async {
@@ -121,12 +124,23 @@ class PedidoService extends ChangeNotifier {
       if (respuesta is List && respuesta.isNotEmpty) {
         return respuesta.first as Map<String, dynamic>;
       }
+      debugPrint('[PedidoService] $funcion respondió algo inesperado: $respuesta');
       throw const ErrorDePedido(_generico);
     } on PostgrestException catch (error) {
+      // Se ve en la consola de depuración de VS Code, para diagnosticar.
+      debugPrint('[PedidoService] $funcion falló: ${error.code} ${error.message}');
+      if (error.code == 'PGRST202' ||
+          error.message.contains('Could not find the function')) {
+        throw const ErrorDePedido(
+          'El servidor todavía no tiene activado el pago protegido. Falta '
+          'correr supabase/04_pago_protegido.sql en Supabase.',
+        );
+      }
       throw _traducir(error.message);
     } on ErrorDePedido {
       rethrow;
-    } catch (_) {
+    } catch (error) {
+      debugPrint('[PedidoService] $funcion: $error');
       throw const ErrorDePedido(
         'No pudimos conectarnos. Revisa tu conexión a internet y vuelve a '
         'intentarlo. No se te cobró nada.',
