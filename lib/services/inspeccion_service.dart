@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/dictamen.dart';
 import '../models/equipo.dart';
 import '../models/inspeccion.dart';
 import '../models/pedido.dart';
@@ -54,6 +55,35 @@ class ErrorDeInspeccion implements Exception {
   final String mensaje;
 }
 
+/// Reglas del dictamen (HU08). El servidor revisa las mismas.
+class ReglasDictamen {
+  ReglasDictamen._();
+
+  static const int minimoMotivo = 15;
+
+  /// Qué falta en el motivo, o null si está bien.
+  static String? motivo({
+    required ResultadoDictamen? resultado,
+    required String motivo,
+    required int fallas,
+  }) {
+    if (resultado == null) return 'Elige si el equipo se aprueba o se rechaza.';
+    final largo = motivo.trim().length;
+    if (resultado == ResultadoDictamen.rechazado && largo < minimoMotivo) {
+      return 'Explica por qué se rechaza (mínimo $minimoMotivo caracteres). '
+          'El comprador y el vendedor lo van a leer.';
+    }
+    if (resultado == ResultadoDictamen.aprobado &&
+        fallas > 0 &&
+        largo < minimoMotivo) {
+      return 'El checklist tiene ${fallas == 1 ? '1 falla' : '$fallas fallas'}: '
+          'explica por qué igual se aprueba. Ejemplo: el rayón coincide con lo '
+          'que declaró el vendedor.';
+    }
+    return null;
+  }
+}
+
 /// Reglas del checklist (HU07). El servidor revisa las mismas.
 class ReglasInspeccion {
   ReglasInspeccion._();
@@ -94,12 +124,19 @@ class InspeccionService extends ChangeNotifier {
     'pago_en_custodia',
     'recibido_en_hub',
     'en_diagnostico',
+    // Con dictamen (HU08): se muestran para consultarlos.
+    'aprobado',
+    'rechazado',
+    'pago_liberado',
   ];
 
   SupabaseClient get _cliente => Supabase.instance.client;
 
   bool _soyInspector = false;
   String? _usuarioRevisado;
+
+  /// Lo usa el tiempo real cuando cambia algo en el Hub.
+  void avisarCambio() => notifyListeners();
 
   /// Si la persona que inició sesión es inspector técnico del Hub.
   bool get soyInspector => _soyInspector;
@@ -132,7 +169,7 @@ class InspeccionService extends ChangeNotifier {
     try {
       final filas = await _cliente
           .from('pedidos')
-          .select('*, equipos(*), inspecciones(*)')
+          .select('*, equipos(*), inspecciones(*), dictamenes(*)')
           .inFilter('estado', _estadosDelHub)
           .order('pagado_en', ascending: true);
       return [
@@ -168,6 +205,38 @@ class InspeccionService extends ChangeNotifier {
       return Inspeccion.desdeFila(dato.first as Map<String, dynamic>);
     }
     return null;
+  }
+
+  /// HU08: emite el dictamen técnico. Es definitivo.
+  Future<void> emitirDictamen(
+    Pedido pedido, {
+    required ResultadoDictamen resultado,
+    required String motivo,
+  }) async {
+    final problema = ReglasDictamen.motivo(
+      resultado: resultado,
+      motivo: motivo,
+      fallas: pedido.inspeccion?.fallas ?? 0,
+    );
+    if (problema != null) throw ErrorDeInspeccion(problema);
+
+    try {
+      await _cliente.rpc('emitir_dictamen', params: {
+        'p_pedido': pedido.id,
+        'p_resultado': resultado.clave,
+        'p_motivo': motivo.trim(),
+      });
+      PedidoService.instancia.avisarCambio();
+      notifyListeners();
+    } on PostgrestException catch (error) {
+      debugPrint('[InspeccionService] dictamen: ${error.message}');
+      throw _traducir(error.message, pedido.equipo.categoria);
+    } catch (_) {
+      throw const ErrorDeInspeccion(
+        'No pudimos conectarnos. Revisa tu conexión: el dictamen no se '
+        'emitió todavía, vuelve a intentarlo.',
+      );
+    }
   }
 
   /// Registra que el vendedor entregó el equipo en el Hub.
@@ -279,6 +348,27 @@ class InspeccionService extends ChangeNotifier {
     if (mensaje.contains('NO_INSPECTOR')) {
       return const ErrorDeInspeccion(
         'Tu cuenta no es de inspector técnico. Pide acceso al administrador.',
+      );
+    }
+    if (mensaje.contains('FALTA_MOTIVO')) {
+      return const ErrorDeInspeccion(
+        'Explica por qué se rechaza el equipo (mínimo 15 caracteres).',
+      );
+    }
+    if (mensaje.contains('FALTA_JUSTIFICACION')) {
+      return const ErrorDeInspeccion(
+        'El checklist tiene fallas: explica por qué igual se aprueba '
+        '(mínimo 15 caracteres).',
+      );
+    }
+    if (mensaje.contains('YA_EMITIDO')) {
+      return const ErrorDeInspeccion(
+        'Este pedido ya tiene dictamen. Los dictámenes no se pueden cambiar.',
+      );
+    }
+    if (mensaje.contains('SIN_CHECKLIST')) {
+      return const ErrorDeInspeccion(
+        'Primero guarda el checklist completo de este equipo.',
       );
     }
     if (mensaje.contains('NO_APLICA')) {

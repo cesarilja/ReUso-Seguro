@@ -70,7 +70,7 @@ class LineaDeTiempo extends StatelessWidget {
     (EstadoPedido.pagoEnCustodia, 'Pago en custodia'),
     (EstadoPedido.recibidoEnHub, 'El vendedor lo entrega en el Hub'),
     (EstadoPedido.enDiagnostico, 'El inspector técnico lo revisa'),
-    (EstadoPedido.aprobado, 'Aprobado: se libera el pago'),
+    (EstadoPedido.aprobado, 'Aprobado: el pago se libera al vendedor'),
     (EstadoPedido.enCamino, 'Va en camino a tus manos'),
   ];
 

@@ -270,6 +270,15 @@ class Inspeccion {
     );
   }
 
+  /// La relación puede llegar como objeto o como lista, según Supabase.
+  static Inspeccion? desdeRelacion(Object? dato) {
+    if (dato is Map<String, dynamic>) return Inspeccion.desdeFila(dato);
+    if (dato is List && dato.isNotEmpty && dato.first is Map<String, dynamic>) {
+      return Inspeccion.desdeFila(dato.first as Map<String, dynamic>);
+    }
+    return null;
+  }
+
   final String pedidoId;
 
   /// Lo revisado en cada punto, según su clave (por ejemplo, `pantalla`).

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/equipo.dart';
 import '../models/pedido.dart';
+import '../services/catalogo_service.dart';
 import '../services/pedido_service.dart';
 import '../services/sesion_service.dart';
 import '../tema.dart';
@@ -15,10 +16,37 @@ import 'mis_compras_screen.dart';
 import 'pago_screen.dart';
 
 /// Detalle de un equipo publicado (HU12).
-class DetalleEquipoScreen extends StatelessWidget {
+///
+/// Se mantiene al día solo: si alguien compra el equipo mientras está
+/// abierto, pasa a «Reservado» sin recargar la página.
+class DetalleEquipoScreen extends StatefulWidget {
   const DetalleEquipoScreen({super.key, required this.equipo});
 
   final Equipo equipo;
+
+  @override
+  State<DetalleEquipoScreen> createState() => _DetalleEquipoScreenState();
+}
+
+class _DetalleEquipoScreenState extends State<DetalleEquipoScreen> {
+  late Equipo equipo = widget.equipo;
+
+  @override
+  void initState() {
+    super.initState();
+    CatalogoService.cambios.addListener(_actualizar);
+  }
+
+  @override
+  void dispose() {
+    CatalogoService.cambios.removeListener(_actualizar);
+    super.dispose();
+  }
+
+  Future<void> _actualizar() async {
+    final nuevo = await const CatalogoService().obtenerEquipo(equipo.id);
+    if (nuevo != null && mounted) setState(() => equipo = nuevo);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +54,12 @@ class DetalleEquipoScreen extends StatelessWidget {
     final pantallaAncha = MediaQuery.sizeOf(context).width >= 900;
 
     final imagen = _Galeria(equipo: equipo);
-    final info = _InfoEquipo(equipo: equipo);
+    // La clave cambia con el estado: así el botón «Comprar» y el aviso se
+    // actualizan cuando el equipo pasa a «Reservado».
+    final info = _InfoEquipo(
+      key: ValueKey('${equipo.id}-${equipo.estado.name}'),
+      equipo: equipo,
+    );
 
     return Scaffold(
       body: Column(
@@ -92,7 +125,7 @@ class DetalleEquipoScreen extends StatelessWidget {
 }
 
 class _InfoEquipo extends StatefulWidget {
-  const _InfoEquipo({required this.equipo});
+  const _InfoEquipo({super.key, required this.equipo});
 
   final Equipo equipo;
 

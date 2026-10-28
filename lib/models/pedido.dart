@@ -1,5 +1,7 @@
 import '../formato.dart';
+import 'dictamen.dart';
 import 'equipo.dart';
+import 'inspeccion.dart';
 
 /// Estados de un pedido, con los mismos nombres del Sprint Planning.
 ///
@@ -64,11 +66,17 @@ class Pedido {
     this.metodo,
     this.referencia,
     this.pagadoEn,
+    this.inspeccion,
+    this.dictamen,
+    this.comision,
+    this.montoVendedor,
+    this.liberadoEn,
   });
 
   /// Crea un pedido a partir de una fila de la tabla `pedidos`.
   factory Pedido.desdeFila(Map<String, dynamic> fila, Equipo equipo) {
     final pagado = fila['pagado_en'] as String?;
+    final liberado = fila['liberado_en'] as String?;
     return Pedido(
       id: fila['id'] as String,
       numero: (fila['numero'] as num).toInt(),
@@ -80,6 +88,11 @@ class Pedido {
       metodo: MetodoPago.desde(fila['metodo_pago'] as String?),
       referencia: fila['referencia'] as String?,
       pagadoEn: pagado == null ? null : DateTime.parse(pagado).toLocal(),
+      inspeccion: Inspeccion.desdeRelacion(fila['inspecciones']),
+      dictamen: Dictamen.desdeRelacion(fila['dictamenes']),
+      comision: (fila['comision'] as num?)?.toDouble(),
+      montoVendedor: (fila['monto_vendedor'] as num?)?.toDouble(),
+      liberadoEn: liberado == null ? null : DateTime.parse(liberado).toLocal(),
     );
   }
 
@@ -102,6 +115,30 @@ class Pedido {
 
   /// Cuándo quedó el pago en custodia. Es null mientras no se pague.
   final DateTime? pagadoEn;
+
+  /// El checklist del Hub (HU07), si ya se hizo y la consulta lo trajo.
+  final Inspeccion? inspeccion;
+
+  /// El dictamen técnico (HU08), si ya se emitió.
+  final Dictamen? dictamen;
+
+  /// HU06: comisión de la plataforma (8 %) y lo que recibe el vendedor.
+  /// Se calculan en el servidor cuando se libera el pago.
+  final double? comision;
+  final double? montoVendedor;
+
+  /// Cuándo se le liberó el pago al vendedor.
+  final DateTime? liberadoEn;
+
+  /// La comisión que se usará, aunque todavía no se haya liberado.
+  static const double tasaComision = 0.08;
+
+  double get comisionEstimada =>
+      comision ?? (monto * tasaComision * 100).round() / 100;
+
+  double get recibeVendedor => montoVendedor ?? monto - comisionEstimada;
+
+  bool get pagoLiberado => liberadoEn != null;
 
   String get codigo => 'P-$numero';
 

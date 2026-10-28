@@ -76,7 +76,7 @@ class PedidoService extends ChangeNotifier {
     try {
       final filas = await _cliente
           .from('pedidos')
-          .select('*, equipos(*)')
+          .select('*, equipos(*), inspecciones(*), dictamenes(*)')
           .eq('comprador_id', usuario.id)
           .order('creado_en', ascending: false);
       return [
@@ -93,6 +93,40 @@ class PedidoService extends ChangeNotifier {
     } on PostgrestException {
       throw const ErrorDePedido(
         'No pudimos cargar tus compras. Vuelve a intentarlo en un momento.',
+      );
+    } catch (_) {
+      throw const ErrorDePedido(
+        'No pudimos conectarnos. Revisa tu conexión a internet.',
+      );
+    }
+  }
+
+  /// HU06: las ventas de la persona que inició sesión (pedidos pagados de
+  /// los equipos que publicó), de la más nueva a la más vieja.
+  Future<List<Pedido>> misVentas() async {
+    final usuario = _cliente.auth.currentUser;
+    if (usuario == null) return const [];
+    try {
+      final filas = await _cliente
+          .from('pedidos')
+          .select('*, equipos!inner(*), inspecciones(*), dictamenes(*)')
+          .eq('equipos.vendedor_id', usuario.id)
+          .order('pagado_en', ascending: false);
+      return [
+        for (final fila in filas)
+          if (fila['equipos'] is Map<String, dynamic>)
+            Pedido.desdeFila(
+              fila,
+              Equipo.desdeFila(
+                fila['equipos'] as Map<String, dynamic>,
+                CatalogoService.urlDeFoto,
+              ),
+            ),
+      ].where((pedido) => pedido.estaPagado).toList(growable: false);
+    } on PostgrestException catch (error) {
+      debugPrint('[PedidoService] misVentas: ${error.message}');
+      throw const ErrorDePedido(
+        'No pudimos cargar tus ventas. Vuelve a intentarlo en un momento.',
       );
     } catch (_) {
       throw const ErrorDePedido(

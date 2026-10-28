@@ -6,9 +6,12 @@ import '../services/inspeccion_service.dart';
 import '../tema.dart';
 import '../widgets/avisos.dart';
 import '../widgets/imagen_equipo.dart';
+import '../widgets/navegacion.dart';
 import '../widgets/pagina_base.dart';
 import '../widgets/pedido_widgets.dart';
 import '../widgets/pegatina.dart';
+import '../widgets/dictamen_widgets.dart';
+import 'dictamen_screen.dart';
 import 'inspeccion_screen.dart';
 
 /// Panel del inspector técnico del Hub (HU07).
@@ -58,8 +61,19 @@ class _PanelHubScreenState extends State<PanelHubScreen> {
     }
   }
 
-  void _inspeccionar(PedidoHub item) {
-    Navigator.of(context).push(
+  // Al volver de cada pantalla, el panel se recarga para mostrar el
+  // pedido en su grupo nuevo, sin recargar la página.
+  Future<void> _dictaminar(PedidoHub item) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DictamenScreen(pedido: item.pedido),
+      ),
+    );
+    _recargar();
+  }
+
+  Future<void> _inspeccionar(PedidoHub item) async {
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => InspeccionScreen(
           pedido: item.pedido,
@@ -67,6 +81,7 @@ class _PanelHubScreenState extends State<PanelHubScreen> {
         ),
       ),
     );
+    _recargar();
   }
 
   @override
@@ -81,11 +96,12 @@ class _PanelHubScreenState extends State<PanelHubScreen> {
     }
 
     return PaginaBase(
+      seccion: Seccion.hub,
       anchoContenido: 860,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const BotonVolver(texto: 'Volver'),
+          const BotonVolver(texto: 'Volver al inicio'),
           const SizedBox(height: 20),
           Row(
             children: [
@@ -109,7 +125,7 @@ class _PanelHubScreenState extends State<PanelHubScreen> {
           FutureBuilder<List<PedidoHub>>(
             future: _pedidos,
             builder: (context, resultado) {
-              if (resultado.connectionState != ConnectionState.done) {
+              if (resultado.connectionState != ConnectionState.done && !resultado.hasData) {
                 return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 40),
                   child: Center(
@@ -117,7 +133,7 @@ class _PanelHubScreenState extends State<PanelHubScreen> {
                   ),
                 );
               }
-              if (resultado.hasError) {
+              if (resultado.hasError && !resultado.hasData) {
                 final error = resultado.error;
                 return RecuadroInfo(
                   icono: Icons.wifi_off_outlined,
@@ -147,6 +163,11 @@ class _PanelHubScreenState extends State<PanelHubScreen> {
                       i.pedido.estado == EstadoPedido.enDiagnostico &&
                       (i.inspeccion?.completa ?? false))
                   .toList();
+              final conDictamen = todos
+                  .where((i) => i.pedido.dictamen != null)
+                  .toList()
+                  .reversed // los más recientes primero
+                  .toList();
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -155,6 +176,7 @@ class _PanelHubScreenState extends State<PanelHubScreen> {
                     porRecibir: porRecibir.length,
                     porInspeccionar: porInspeccionar.length,
                     listos: listos.length,
+                    conDictamen: conDictamen.length,
                   ),
                   const SizedBox(height: 28),
                   _Grupo(
@@ -185,15 +207,34 @@ class _PanelHubScreenState extends State<PanelHubScreen> {
                   ),
                   const SizedBox(height: 28),
                   _Grupo(
-                    titulo: '3. Inspeccionados',
+                    titulo: '3. Listos para dictamen',
                     vacio: 'Todavía no hay checklists guardados.',
                     items: listos,
-                    accion: (item) => BotonPegatina(
-                      texto: 'Ver o corregir',
-                      icono: Icons.edit_note,
-                      principal: false,
-                      alTocar: () => _inspeccionar(item),
+                    accion: (item) => Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        BotonPegatina(
+                          texto: 'Corregir checklist',
+                          icono: Icons.edit_note,
+                          principal: false,
+                          alTocar: () => _inspeccionar(item),
+                        ),
+                        BotonPegatina(
+                          texto: 'Emitir dictamen',
+                          icono: Icons.gavel_outlined,
+                          alTocar: () => _dictaminar(item),
+                        ),
+                      ],
                     ),
+                  ),
+                  const SizedBox(height: 28),
+                  _Grupo(
+                    titulo: '4. Con dictamen',
+                    vacio: 'Todavía no se ha emitido ningún dictamen.',
+                    items: conDictamen,
+                    accion: (item) => const SizedBox.shrink(),
                   ),
                 ],
               );
@@ -211,11 +252,13 @@ class _Resumen extends StatelessWidget {
     required this.porRecibir,
     required this.porInspeccionar,
     required this.listos,
+    required this.conDictamen,
   });
 
   final int porRecibir;
   final int porInspeccionar;
   final int listos;
+  final int conDictamen;
 
   @override
   Widget build(BuildContext context) {
@@ -244,15 +287,27 @@ class _Resumen extends StatelessWidget {
           ),
         );
 
-    return Row(
-      children: [
-        contador('Por recibir', porRecibir, Icons.local_shipping_outlined),
-        const SizedBox(width: 12),
-        contador('Por inspeccionar', porInspeccionar, Icons.fact_check_outlined),
-        const SizedBox(width: 12),
-        contador('Inspeccionados', listos, Icons.task_alt),
-      ],
-    );
+    final fila1 = [
+      contador('Por recibir', porRecibir, Icons.local_shipping_outlined),
+      const SizedBox(width: 12),
+      contador('Por inspeccionar', porInspeccionar, Icons.fact_check_outlined),
+    ];
+    final fila2 = [
+      contador('Para dictamen', listos, Icons.task_alt),
+      const SizedBox(width: 12),
+      contador('Con dictamen', conDictamen, Icons.gavel_outlined),
+    ];
+    // En pantallas angostas van en dos filas para que se lean bien.
+    if (MediaQuery.sizeOf(context).width < 700) {
+      return Column(
+        children: [
+          Row(children: fila1),
+          const SizedBox(height: 12),
+          Row(children: fila2),
+        ],
+      );
+    }
+    return Row(children: [...fila1, const SizedBox(width: 12), ...fila2]);
   }
 }
 
@@ -319,7 +374,10 @@ class _TarjetaHub extends StatelessWidget {
           ),
           if (pagadoEn != null)
             Text('Pagado el ${formatearFecha(pagadoEn)}', style: Tipos.pequeno),
-          if (inspeccion != null && inspeccion.completa)
+          if (pedido.dictamen != null) ...[
+            const SizedBox(height: 8),
+            TarjetaDictamen(dictamen: pedido.dictamen!),
+          ] else if (inspeccion != null && inspeccion.completa)
             Text(
               inspeccion.fallas == 0
                   ? 'Checklist: sin fallas'

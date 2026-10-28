@@ -39,6 +39,8 @@ flutter run -d chrome
 | HU11. Publicar un equipo | 5 | Hecha |
 | HU01. Pago protegido (simulado) | 5 | Hecha |
 | HU07. Checklist de inspección | 5 | Hecha |
+| HU08. Dictamen técnico | 3 | Hecha |
+| HU06. Liberación automática del pago | 5 | Hecha |
 
 - El catálogo se carga desde Supabase (tabla `equipos`) con fotos reales en Supabase Storage. Mientras carga dice «Cargando equipos…» y, si falla, ofrece «Reintentar».
 - **Publicar un equipo** (`lib/screens/publicar_screen.dart` y `lib/services/publicacion_service.dart`):
@@ -68,6 +70,28 @@ flutter run -d chrome
   - no se puede guardar con puntos sin marcar: se marcan en rojo con lo que falta;
   - arriba se ve lo que declaró el vendedor, para compararlo con el equipo;
   - el comprador ve en «Mis compras» que su pedido llegó al Hub y está en revisión.
+- **Dictamen técnico** (HU08: `lib/screens/dictamen_screen.dart`, `lib/widgets/dictamen_widgets.dart`):
+  - desde «Listos para dictamen», el inspector ve el resumen del checklist y elige **Aprobar** o **Rechazar** (botones grandes con color, ícono y texto);
+  - rechazar exige un motivo; aprobar un equipo con fallas exige explicar por qué (por ejemplo, un rayón que el vendedor declaró);
+  - se confirma antes de emitir porque el dictamen es definitivo;
+  - el comprador ve en «Mis compras» el dictamen («Aprobado» en verde o «Rechazado» en rojo, siempre con texto) y puede abrir lo que revisó el inspector;
+  - la función del servidor `emitir_dictamen` (`supabase/06_dictamen.sql`) solo acepta dictámenes de inspectores, con checklist completo y una sola vez por pedido.
+- **Liberación automática del pago** (HU06: `supabase/07_liberacion_pago.sql`, `lib/screens/mis_ventas_screen.dart`):
+  - cuando el inspector aprueba el equipo, un disparador (trigger) en el servidor pasa el pedido a «Pago liberado» sin que nadie lo haga a mano;
+  - se descuenta la comisión de la plataforma (8 %) y se guarda cuánto recibe el vendedor;
+  - **Mis ventas** (menú de la cuenta) muestra cada venta con el desglose: precio, comisión y lo que recibe; arriba, lo ya recibido y lo que sigue en custodia;
+  - el vendedor ve en cada venta qué sigue (llevar el equipo al Hub, en revisión, pago liberado) y el dictamen del inspector;
+  - el navegador no puede liberar pagos: la función no tiene permisos para la app. **No se mueve dinero real.**
+- **Todo en tiempo real** (`lib/services/tiempo_real_service.dart`, `supabase/08_tiempo_real.sql`): con Supabase Realtime, el catálogo, el detalle de un equipo, Mis compras, Mis ventas y el Panel del Hub se actualizan solos cuando otra persona compra, publica, guarda un checklist o emite un dictamen. No hay que recargar la página. Cada persona solo recibe los cambios que tiene permiso de ver.
+- **Navegación y nuevas páginas** (`lib/widgets/navegacion.dart`, `lib/widgets/barra_superior.dart`):
+  - la barra de arriba muestra las secciones: **Inicio**, **Cómo funciona**, **Mis compras**, **Mis ventas** y (solo inspectores) **Panel del Hub**. La sección actual queda subrayada en orquídea y en negrita (heurística 1: el usuario sabe dónde está);
+  - en pantallas angostas las secciones se juntan en el botón «Menú»; la cuenta es un círculo con flecha ▾ para que se note que abre un menú (heurística 6);
+  - ir a una sección funciona como pestañas: «Volver al inicio» siempre regresa al catálogo y no se apilan pantallas.
+- **Cómo funciona** (`lib/screens/como_funciona_screen.dart`): los 4 pasos de la custodia, qué gana el comprador y el vendedor, y preguntas frecuentes (comisión, qué revisa el Hub, reembolso, pagos simulados). Resuelve la heurística 10 (ayuda y documentación).
+- **Buscar y filtrar el catálogo** (`lib/services/filtro_catalogo.dart`): buscador (sin importar tildes ni mayúsculas), categorías, «Solo disponibles» y orden por fecha o precio. Si nada coincide, se dice y se ofrece «Limpiar filtros» (heurística 7).
+- **Mis ventas** ahora también lista **Tus equipos publicados** con su estado (Disponible / Reservado, con ícono y texto, no solo color).
+- La portada muestra las tres garantías (pago en custodia, revisión en el Hub, reembolso) y el pie de página trae accesos a las secciones.
+- Cuando llega un cambio en tiempo real, las listas se actualizan sin parpadear: se sigue viendo lo anterior hasta que llega lo nuevo.
 - La función del servidor `guardar_inspeccion` (`supabase/05_inspeccion.sql`) vuelve a revisar todas las reglas. Para dar acceso de inspector a una cuenta:
   ```sql
   insert into public.inspectores (usuario_id)
@@ -90,7 +114,7 @@ Arquitectura en **capas cerradas** sobre un modelo cliente-servidor, con Supabas
 |---|---|
 | Repository | `CatalogoService`, `PublicacionService`, `PedidoService`, `InspeccionService` y `SesionService`: las pantallas no saben de dónde vienen los datos |
 | Singleton | `SesionService.instancia` y `PedidoService.instancia` |
-| Observer | `SesionService` avisa cuando alguien entra o sale y la barra superior se actualiza sola; `CatalogoService.cambios` avisa cuando se publica un equipo y el catálogo se recarga |
+| Observer | `SesionService` avisa cuando alguien entra o sale y la barra superior se actualiza sola; `TiempoRealService` escucha los cambios de la base de datos y avisa a `CatalogoService`, `PedidoService` e `InspeccionService`, cuyas pantallas se recargan solas |
 | Facade | `SesionService` esconde el cliente de Supabase y traduce sus errores al español |
 
 ## Diferencias con el documento de arquitectura (y por qué)

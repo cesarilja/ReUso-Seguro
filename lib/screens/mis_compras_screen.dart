@@ -5,7 +5,9 @@ import '../models/pedido.dart';
 import '../services/pedido_service.dart';
 import '../services/sesion_service.dart';
 import '../tema.dart';
+import '../widgets/dictamen_widgets.dart';
 import '../widgets/imagen_equipo.dart';
+import '../widgets/navegacion.dart';
 import '../widgets/pagina_base.dart';
 import '../widgets/pedido_widgets.dart';
 import '../widgets/pegatina.dart';
@@ -50,11 +52,12 @@ class _MisComprasScreenState extends State<MisComprasScreen> {
     final haySesion = SesionService.instancia.haySesion;
 
     return PaginaBase(
+      seccion: Seccion.compras,
       anchoContenido: 760,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const BotonVolver(texto: 'Volver'),
+          const BotonVolver(texto: 'Volver al inicio'),
           const SizedBox(height: 20),
           const Text('Mis compras', style: Tipos.titulo),
           const SizedBox(height: 6),
@@ -69,10 +72,10 @@ class _MisComprasScreenState extends State<MisComprasScreen> {
             FutureBuilder<List<Pedido>>(
               future: _pedidos,
               builder: (context, resultado) {
-                if (resultado.connectionState != ConnectionState.done) {
+                if (resultado.connectionState != ConnectionState.done && !resultado.hasData) {
                   return const _Cargando();
                 }
-                if (resultado.hasError) {
+                if (resultado.hasError && !resultado.hasData) {
                   final error = resultado.error;
                   return RecuadroInfo(
                     icono: Icons.wifi_off_outlined,
@@ -178,8 +181,19 @@ class _TarjetaPedido extends StatelessWidget {
                   icono: Icons.block,
                   texto: 'Cancelaste este pedido. No se te cobró nada.',
                 )
-              else
-                _Seguimiento(pedido: pedido),
+              else ...[
+                // HU08: el resultado de la inspección, con color y texto.
+                if (pedido.dictamen != null) ...[
+                  TarjetaDictamen(dictamen: pedido.dictamen!),
+                  const SizedBox(height: 12),
+                ],
+                if (pedido.estado != EstadoPedido.rechazado)
+                  _Seguimiento(pedido: pedido),
+                if (pedido.inspeccion != null && pedido.dictamen != null) ...[
+                  const SizedBox(height: 12),
+                  _ChecklistDelHub(pedido: pedido),
+                ],
+              ],
             ],
           ),
         ),
@@ -210,13 +224,51 @@ class _Seguimiento extends StatelessWidget {
           leading: const Icon(Icons.local_shipping_outlined,
               color: ColoresApp.tinta),
           title: Text(
-            'Tu dinero sigue retenido. Mira en qué va tu pedido.',
+            pedido.estado == EstadoPedido.pagoLiberado ||
+                    pedido.estado == EstadoPedido.enCamino
+                ? 'Tu equipo fue aprobado. Mira en qué va tu pedido.'
+                : 'Tu dinero sigue retenido. Mira en qué va tu pedido.',
             style: Tipos.pequeno.copyWith(
               fontSize: 14.5,
               color: ColoresApp.tinta,
             ),
           ),
           children: [LineaDeTiempo(estado: pedido.estado)],
+        ),
+      ),
+    );
+  }
+}
+
+/// Transparencia: el comprador puede ver qué revisó el inspector.
+class _ChecklistDelHub extends StatelessWidget {
+  const _ChecklistDelHub({required this.pedido});
+
+  final Pedido pedido;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: ColoresApp.nube, width: 2),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          leading: const Icon(Icons.fact_check_outlined, color: ColoresApp.tinta),
+          title: Text(
+            'Ver lo que revisó el inspector',
+            style: Tipos.pequeno.copyWith(fontSize: 14.5, color: ColoresApp.tinta),
+          ),
+          children: [
+            ResumenChecklist(
+              inspeccion: pedido.inspeccion!,
+              categoria: pedido.equipo.categoria,
+            ),
+          ],
         ),
       ),
     );

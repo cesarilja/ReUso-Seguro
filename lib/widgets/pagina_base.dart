@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../tema.dart';
 import 'barra_superior.dart';
+import 'navegacion.dart';
 import 'pie_de_pagina.dart';
 
 /// Estructura común de las pantallas internas: barra superior, contenido
@@ -11,7 +12,11 @@ class PaginaBase extends StatelessWidget {
     super.key,
     required this.child,
     this.anchoContenido = 680,
+    this.seccion,
   });
+
+  /// La sección que se marca en la barra de arriba, si es una principal.
+  final Seccion? seccion;
 
   final Widget child;
 
@@ -25,11 +30,7 @@ class PaginaBase extends StatelessWidget {
     return Scaffold(
       body: Column(
         children: [
-          BarraSuperior(
-            // El logo devuelve al catálogo.
-            alTocarLogo: () =>
-                Navigator.of(context).popUntil((ruta) => ruta.isFirst),
-          ),
+          BarraSuperior(seccion: seccion),
           Expanded(
             child: CustomScrollView(
               slivers: [

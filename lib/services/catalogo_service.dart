@@ -52,6 +52,36 @@ class CatalogoService {
     }
   }
 
+  /// Un equipo con sus datos al día (por ejemplo, si ya lo reservaron).
+  /// Responde null si no se pudo cargar.
+  Future<Equipo?> obtenerEquipo(String id) async {
+    try {
+      final fila =
+          await _cliente.from(_tabla).select().eq('id', id).maybeSingle();
+      return fila == null ? null : Equipo.desdeFila(fila, urlDeFoto);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Los equipos que publicó la persona que inició sesión, vendidos o no.
+  Future<List<Equipo>> misPublicaciones() async {
+    final usuario = _cliente.auth.currentUser?.id;
+    if (usuario == null) return const [];
+    try {
+      final filas = await _cliente
+          .from(_tabla)
+          .select()
+          .eq('vendedor_id', usuario)
+          .order('creado_en', ascending: false);
+      return filas
+          .map((fila) => Equipo.desdeFila(fila, urlDeFoto))
+          .toList(growable: false);
+    } catch (_) {
+      throw const ErrorDeCatalogo('No pudimos cargar tus publicaciones.');
+    }
+  }
+
   /// Dirección pública de una foto guardada en el almacén `equipos`.
   static String urlDeFoto(String ruta) => Supabase.instance.client.storage
       .from(_almacenFotos)

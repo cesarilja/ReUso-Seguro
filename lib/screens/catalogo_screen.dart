@@ -4,12 +4,17 @@ import 'package:flutter/material.dart';
 
 import '../models/equipo.dart';
 import '../services/catalogo_service.dart';
+import '../services/filtro_catalogo.dart';
+import '../services/publicacion_service.dart';
 import '../tema.dart';
+import '../widgets/avisos.dart';
 import '../widgets/barra_superior.dart';
 import '../widgets/equipo_widgets.dart';
+import '../widgets/navegacion.dart';
 import '../widgets/pegatina.dart';
 import '../widgets/pie_de_pagina.dart';
 import 'detalle_equipo_screen.dart';
+import 'publicar_screen.dart';
 
 /// Pantalla inicial: la portada y el catálogo de equipos publicados.
 ///
@@ -24,7 +29,18 @@ class CatalogoScreen extends StatefulWidget {
 class _CatalogoScreenState extends State<CatalogoScreen> {
   final ScrollController _scroll = ScrollController();
   final GlobalKey _clavePortada = GlobalKey();
+  final TextEditingController _buscador = TextEditingController();
   late Future<List<Equipo>> _equipos = const CatalogoService().obtenerEquipos();
+
+  /// Lo que la persona eligió para buscar y filtrar (heurística 7).
+  FiltroCatalogo _filtro = const FiltroCatalogo();
+
+  void _cambiarFiltro(FiltroCatalogo nuevo) => setState(() => _filtro = nuevo);
+
+  void _limpiarFiltros() {
+    _buscador.clear();
+    setState(() => _filtro = FiltroCatalogo(orden: _filtro.orden));
+  }
 
   /// Vuelve a pedir los equipos (por ejemplo, después de un error).
   void _recargar() {
@@ -43,6 +59,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
   void dispose() {
     CatalogoService.cambios.removeListener(_recargar);
     _scroll.dispose();
+    _buscador.dispose();
     super.dispose();
   }
 
@@ -88,7 +105,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
     return Scaffold(
       body: Column(
         children: [
-          const BarraSuperior(),
+          const BarraSuperior(seccion: Seccion.inicio),
           Expanded(
             child: CustomScrollView(
               controller: _scroll,
@@ -105,7 +122,10 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                 FutureBuilder<List<Equipo>>(
                   future: _equipos,
                   builder: (context, resultado) {
-                    if (resultado.connectionState != ConnectionState.done) {
+                    // Si ya había equipos (por ejemplo, al llegar un cambio en
+                    // tiempo real) se siguen mostrando mientras se actualiza.
+                    if (resultado.connectionState != ConnectionState.done &&
+                        !resultado.hasData) {
                       return _sliverMensaje(
                         margen,
                         const _EstadoCatalogo(
@@ -115,7 +135,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                       );
                     }
                     final error = resultado.error;
-                    if (error != null) {
+                    if (error != null && !resultado.hasData) {
                       return _sliverMensaje(
                         margen,
                         _EstadoCatalogo(
@@ -135,38 +155,74 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                         ),
                       );
                     }
+                    final filtrados = _filtro.aplicar(equipos);
                     return SliverMainAxisGroup(
                       slivers: [
                         SliverToBoxAdapter(
                           child: Padding(
                             padding:
                                 EdgeInsets.fromLTRB(margen, 0, margen, 22),
-                            child:
-                                _CabeceraCatalogo(cantidad: equipos.length),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _CabeceraCatalogo(
+                                  cantidad: filtrados.length,
+                                  total: equipos.length,
+                                ),
+                                const SizedBox(height: 18),
+                                _BarraFiltros(
+                                  filtro: _filtro,
+                                  buscador: _buscador,
+                                  alCambiar: _cambiarFiltro,
+                                  alLimpiar: _limpiarFiltros,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        SliverPadding(
-                          padding:
-                              EdgeInsets.fromLTRB(margen, 0, margen, 64),
-                          sliver: SliverGrid(
-                            // La cantidad de columnas se ajusta sola.
-                            gridDelegate:
-                                const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 300,
-                              mainAxisExtent: 340,
-                              crossAxisSpacing: 24,
-                              mainAxisSpacing: 24,
+                        if (filtrados.isEmpty)
+                          _sliverMensaje(
+                            margen,
+                            _EstadoCatalogo(
+                              icono: Icons.search_off,
+                              texto: 'Ningún equipo coincide con lo que '
+                                  'buscas. Prueba con otras palabras o quita '
+                                  'algún filtro.',
+                              textoBoton: 'Limpiar filtros',
+                              iconoBoton: Icons.filter_alt_off_outlined,
+                              alReintentar: _limpiarFiltros,
                             ),
-                            delegate: SliverChildBuilderDelegate(
-                              (context, indice) {
-                                final equipo = equipos[indice];
-                                return TarjetaEquipo(
-                                  equipo: equipo,
-                                  alTocar: () => _abrirDetalle(equipo),
-                                );
-                              },
-                              childCount: equipos.length,
+                          )
+                        else
+                          SliverPadding(
+                            padding:
+                                EdgeInsets.fromLTRB(margen, 0, margen, 64),
+                            sliver: SliverGrid(
+                              // La cantidad de columnas se ajusta sola.
+                              gridDelegate:
+                                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                                maxCrossAxisExtent: 300,
+                                mainAxisExtent: 340,
+                                crossAxisSpacing: 24,
+                                mainAxisSpacing: 24,
+                              ),
+                              delegate: SliverChildBuilderDelegate(
+                                (context, indice) {
+                                  final equipo = filtrados[indice];
+                                  return TarjetaEquipo(
+                                    equipo: equipo,
+                                    alTocar: () => _abrirDetalle(equipo),
+                                  );
+                                },
+                                childCount: filtrados.length,
+                              ),
                             ),
+                          ),
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding:
+                                EdgeInsets.fromLTRB(margen, 0, margen, 64),
+                            child: const _LlamadoVender(),
                           ),
                         ),
                       ],
@@ -215,11 +271,47 @@ class _Portada extends StatelessWidget {
         const SizedBox(height: 16),
         Text(
           'Tu pago queda guardado hasta que revisamos el equipo en nuestro '
-          'Hub. Solo entonces cobra el vendedor.',
+          'centro de revisión técnica (el Hub). Solo entonces cobra el '
+          'vendedor.',
           style: Tipos.cuerpo.copyWith(fontSize: 18),
         ),
         const SizedBox(height: 28),
-        BotonPegatina(texto: 'Ver equipos', alTocar: alVerEquipos),
+        Wrap(
+          spacing: 14,
+          runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            BotonPegatina(
+              texto: 'Ver equipos',
+              icono: Icons.arrow_downward,
+              alTocar: alVerEquipos,
+            ),
+            TextButton.icon(
+              onPressed: () => irA(context, Seccion.comoFunciona),
+              style: TextButton.styleFrom(
+                foregroundColor: ColoresApp.tinta,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              ),
+              icon: const Icon(Icons.help_outline),
+              label: const Text('¿Cómo funciona?'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 28),
+        // Las tres promesas de la plataforma, siempre con ícono y texto.
+        const Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _Garantia(icono: Icons.lock_outline, texto: 'Pago en custodia'),
+            _Garantia(
+              icono: Icons.fact_check_outlined,
+              texto: 'Revisión técnica en el Hub',
+            ),
+            _Garantia(icono: Icons.undo, texto: 'Reembolso si no pasa'),
+          ],
+        ),
       ],
     );
 
@@ -238,6 +330,40 @@ class _Portada extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [mensaje, const SizedBox(height: 40), ruta],
+    );
+  }
+}
+
+/// Una promesa de la plataforma, en forma de etiqueta.
+class _Garantia extends StatelessWidget {
+  const _Garantia({required this.icono, required this.texto});
+
+  final IconData icono;
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: ColoresApp.nube,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icono, size: 18, color: ColoresApp.tinta),
+          const SizedBox(width: 6),
+          Text(
+            texto,
+            style: const TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: ColoresApp.tinta,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -267,7 +393,8 @@ class _RutaDelPago extends StatelessWidget {
             _Paso(
               imagen: 'assets/images/pasos/revision.png',
               titulo: '2. Revisamos el equipo en nuestro Hub',
-              detalle: 'Pantalla, batería, chasis, puertos y encendido.',
+              detalle: 'Un inspector lo prueba punto por punto, según el '
+                  'tipo de equipo.',
             ),
             _Conector(),
             _Paso(
@@ -365,12 +492,16 @@ class _Punto extends StatelessWidget {
 }
 
 class _CabeceraCatalogo extends StatelessWidget {
-  const _CabeceraCatalogo({required this.cantidad});
+  const _CabeceraCatalogo({required this.cantidad, required this.total});
 
   final int cantidad;
+  final int total;
 
   @override
   Widget build(BuildContext context) {
+    final texto = cantidad == total
+        ? '$total ${total == 1 ? 'equipo' : 'equipos'}'
+        : '$cantidad de $total equipos';
     return Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
@@ -378,11 +509,247 @@ class _CabeceraCatalogo extends StatelessWidget {
         const Expanded(
           child: Text('Equipos publicados', style: Tipos.titulo),
         ),
-        Text(
-          '$cantidad equipos',
-          style: Tipos.pequeno.copyWith(fontSize: 15),
+        // Se anuncia a los lectores de pantalla cuando cambia el resultado.
+        Semantics(
+          liveRegion: true,
+          child: Text(texto, style: Tipos.pequeno.copyWith(fontSize: 15)),
         ),
       ],
+    );
+  }
+}
+
+/// Buscador, categorías, «solo disponibles» y orden (heurística 7:
+/// flexibilidad y eficiencia de uso, hallazgo del taller de UX).
+class _BarraFiltros extends StatelessWidget {
+  const _BarraFiltros({
+    required this.filtro,
+    required this.buscador,
+    required this.alCambiar,
+    required this.alLimpiar,
+  });
+
+  final FiltroCatalogo filtro;
+  final TextEditingController buscador;
+  final ValueChanged<FiltroCatalogo> alCambiar;
+  final VoidCallback alLimpiar;
+
+  @override
+  Widget build(BuildContext context) {
+    final ancha = MediaQuery.sizeOf(context).width >= 760;
+
+    final campo = TextField(
+      controller: buscador,
+      onChanged: (t) => alCambiar(filtro.copiar(texto: t)),
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: 'Busca por nombre, marca o modelo (ej. iPhone, PS4)',
+        hintStyle: const TextStyle(color: Color(0xFF6B7088)),
+        prefixIcon: const Icon(Icons.search, color: ColoresApp.tinta),
+        suffixIcon: filtro.texto.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Borrar búsqueda',
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  buscador.clear();
+                  alCambiar(filtro.copiar(texto: ''));
+                },
+              ),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(vertical: 14),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: ColoresApp.tinta, width: 2),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: ColoresApp.orquidea, width: 3),
+        ),
+      ),
+    );
+
+    final orden = Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: ColoresApp.tinta, width: 2),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<OrdenCatalogo>(
+          value: filtro.orden,
+          icon: const Icon(Icons.swap_vert, color: ColoresApp.tinta),
+          style: const TextStyle(
+            fontSize: 14.5,
+            fontWeight: FontWeight.w600,
+            color: ColoresApp.tinta,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          onChanged: (o) {
+            if (o != null) alCambiar(filtro.copiar(orden: o));
+          },
+          items: [
+            for (final o in OrdenCatalogo.values)
+              DropdownMenuItem(value: o, child: Text(o.nombre)),
+          ],
+        ),
+      ),
+    );
+
+    Widget chip(String texto, bool elegido, VoidCallback alTocar,
+        {IconData? icono}) {
+      return FilterChip(
+        selected: elegido,
+        onSelected: (_) => alTocar(),
+        showCheckmark: elegido,
+        checkmarkColor: Colors.white,
+        avatar: icono == null || elegido
+            ? null
+            : Icon(icono, size: 18, color: ColoresApp.tinta),
+        label: Text(texto),
+        labelStyle: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: elegido ? Colors.white : ColoresApp.tinta,
+        ),
+        backgroundColor: Colors.white,
+        selectedColor: ColoresApp.tinta,
+        side: const BorderSide(color: ColoresApp.tinta, width: 1.5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (ancha)
+          Row(
+            children: [
+              Expanded(child: campo),
+              const SizedBox(width: 12),
+              orden,
+            ],
+          )
+        else ...[
+          campo,
+          const SizedBox(height: 10),
+          orden,
+        ],
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            chip('Todos', filtro.categoria == null,
+                () => alCambiar(filtro.copiar(quitarCategoria: true))),
+            for (final c in ReglasPublicacion.categorias)
+              chip(
+                c,
+                filtro.categoria == c,
+                () => alCambiar(
+                  filtro.categoria == c
+                      ? filtro.copiar(quitarCategoria: true)
+                      : filtro.copiar(categoria: c),
+                ),
+              ),
+            Container(width: 2, height: 24, color: ColoresApp.cielo),
+            chip(
+              'Solo disponibles',
+              filtro.soloDisponibles,
+              () => alCambiar(
+                filtro.copiar(soloDisponibles: !filtro.soloDisponibles),
+              ),
+              icono: Icons.check_circle_outline,
+            ),
+            if (filtro.activo)
+              TextButton.icon(
+                onPressed: alLimpiar,
+                style: TextButton.styleFrom(foregroundColor: ColoresApp.tinta),
+                icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                label: const Text('Limpiar filtros'),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Franja al final del catálogo que invita a vender.
+class _LlamadoVender extends StatelessWidget {
+  const _LlamadoVender();
+
+  Future<void> _publicar(BuildContext context) async {
+    final listo = await asegurarSesion(context);
+    if (!listo || !context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const PublicarScreen()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ancha = MediaQuery.sizeOf(context).width >= 760;
+    final textos = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '¿Tienes un equipo que ya no usas?',
+          style: Tipos.titulo.copyWith(color: Colors.white),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Publícalo gratis. Cobras en cuanto el Hub lo aprueba, y el '
+          'comprador ya pagó antes de que lo entregues.',
+          style: TextStyle(fontSize: 16, color: ColoresApp.cielo, height: 1.4),
+        ),
+      ],
+    );
+    final botones = Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        BotonPegatina(
+          texto: 'Publicar un equipo',
+          icono: Icons.add,
+          principal: false,
+          alTocar: () => _publicar(context),
+        ),
+        TextButton.icon(
+          onPressed: () => irA(context, Seccion.comoFunciona),
+          style: TextButton.styleFrom(
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+          ),
+          icon: const Icon(Icons.help_outline),
+          label: const Text('¿Cómo funciona?'),
+        ),
+      ],
+    );
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(ancha ? 36 : 24),
+      decoration: BoxDecoration(
+        color: ColoresApp.tinta,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: ColoresApp.orquidea, width: 3),
+      ),
+      child: ancha
+          ? Row(
+              children: [
+                Expanded(child: textos),
+                const SizedBox(width: 28),
+                botones,
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [textos, const SizedBox(height: 20), botones],
+            ),
     );
   }
 }
@@ -394,11 +761,17 @@ class _EstadoCatalogo extends StatelessWidget {
     required this.texto,
     this.cargando = false,
     this.alReintentar,
+    this.icono = Icons.inventory_2_outlined,
+    this.textoBoton = 'Reintentar',
+    this.iconoBoton = Icons.refresh,
   });
 
   final String texto;
   final bool cargando;
   final VoidCallback? alReintentar;
+  final IconData icono;
+  final String textoBoton;
+  final IconData iconoBoton;
 
   @override
   Widget build(BuildContext context) {
@@ -421,11 +794,7 @@ class _EstadoCatalogo extends StatelessWidget {
               ),
             )
           else
-            const Icon(
-              Icons.inventory_2_outlined,
-              size: 40,
-              color: ColoresApp.pizarra,
-            ),
+            Icon(icono, size: 40, color: ColoresApp.pizarra),
           const SizedBox(height: 16),
           Text(
             texto,
@@ -435,8 +804,8 @@ class _EstadoCatalogo extends StatelessWidget {
           if (alReintentar != null) ...[
             const SizedBox(height: 20),
             BotonPegatina(
-              texto: 'Reintentar',
-              icono: Icons.refresh,
+              texto: textoBoton,
+              icono: iconoBoton,
               alTocar: alReintentar!,
             ),
           ],

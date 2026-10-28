@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'configuracion.dart';
 import 'screens/catalogo_screen.dart';
+import 'services/tiempo_real_service.dart';
 import 'tema.dart';
 
 Future<void> main() async {
@@ -13,6 +14,9 @@ Future<void> main() async {
     url: Configuracion.supabaseUrl,
     publishableKey: Configuracion.supabaseClave,
   );
+
+  // Cambios en tiempo real: la app se actualiza sola, sin recargar.
+  TiempoRealService.instancia.iniciar();
 
   runApp(const ReUsoSeguroApp());
 }
