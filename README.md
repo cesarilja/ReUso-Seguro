@@ -38,6 +38,7 @@ flutter run -d chrome
 |---|---|---|
 | HU11. Publicar un equipo | 5 | Hecha |
 | HU01. Pago protegido (simulado) | 5 | Hecha |
+| HU07. Checklist de inspección | 5 | Hecha |
 
 - El catálogo se carga desde Supabase (tabla `equipos`) con fotos reales en Supabase Storage. Mientras carga dice «Cargando equipos…» y, si falla, ofrece «Reintentar».
 - **Publicar un equipo** (`lib/screens/publicar_screen.dart` y `lib/services/publicacion_service.dart`):
@@ -58,6 +59,21 @@ flutter run -d chrome
   - el pedido se puede cancelar mientras no se haya pagado;
   - «Mis compras» (menú de la cuenta) lista los pedidos con su estado.
 - **El navegador nunca cambia el estado del pago ni la reserva**: lo hacen las funciones del servidor `crear_pedido`, `pagar_pedido` y `cancelar_pedido` (`supabase/04_pago_protegido.sql`), que bloquean el equipo mientras se paga para que dos personas no lo compren a la vez. **No se mueve dinero real.**
+- **Checklist de inspección en el Hub** (HU07: `lib/screens/panel_hub_screen.dart`, `lib/screens/inspeccion_screen.dart`, `lib/services/inspeccion_service.dart`):
+  - solo las cuentas de inspector técnico ven «Panel del Hub» en el menú de la cuenta;
+  - el panel ordena el trabajo en tres grupos (por recibir, por inspeccionar e inspeccionados) con contadores arriba;
+  - el checklist cambia según el tipo de equipo (laptop, teléfono, tablet, consola, audio u otro): unos audífonos se revisan por sonido, micrófono y almohadillas, no por pantalla; cada punto trae una ayuda de qué revisar;
+  - todos los puntos son obligatorios; los que algunos equipos no tienen (cámaras, lectora de discos, micrófono) se pueden marcar «No aplica»;
+  - cada falla pide una nota y de 1 a 4 fotos de evidencia; la barra de progreso dice cuántos puntos van listos («3 de 5»);
+  - no se puede guardar con puntos sin marcar: se marcan en rojo con lo que falta;
+  - arriba se ve lo que declaró el vendedor, para compararlo con el equipo;
+  - el comprador ve en «Mis compras» que su pedido llegó al Hub y está en revisión.
+- La función del servidor `guardar_inspeccion` (`supabase/05_inspeccion.sql`) vuelve a revisar todas las reglas. Para dar acceso de inspector a una cuenta:
+  ```sql
+  insert into public.inspectores (usuario_id)
+    select id from auth.users where email = 'correo-del-inspector@gmail.com'
+  on conflict do nothing;
+  ```
 
 ## Cómo cumple la arquitectura
 
@@ -72,7 +88,7 @@ Arquitectura en **capas cerradas** sobre un modelo cliente-servidor, con Supabas
 
 | Patrón de diseño | Dónde está |
 |---|---|
-| Repository | `CatalogoService`, `PublicacionService`, `PedidoService` y `SesionService`: las pantallas no saben de dónde vienen los datos |
+| Repository | `CatalogoService`, `PublicacionService`, `PedidoService`, `InspeccionService` y `SesionService`: las pantallas no saben de dónde vienen los datos |
 | Singleton | `SesionService.instancia` y `PedidoService.instancia` |
 | Observer | `SesionService` avisa cuando alguien entra o sale y la barra superior se actualiza sola; `CatalogoService.cambios` avisa cuando se publica un equipo y el catálogo se recarga |
 | Facade | `SesionService` esconde el cliente de Supabase y traduce sus errores al español |
