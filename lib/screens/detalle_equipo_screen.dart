@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/equipo.dart';
+import '../models/pedido.dart';
 import '../services/pedido_service.dart';
 import '../services/sesion_service.dart';
 import '../tema.dart';
@@ -10,6 +11,7 @@ import '../widgets/equipo_widgets.dart';
 import '../widgets/imagen_equipo.dart';
 import '../widgets/pegatina.dart';
 import '../widgets/pie_de_pagina.dart';
+import 'mis_compras_screen.dart';
 import 'pago_screen.dart';
 
 /// Detalle de un equipo publicado (HU12).
@@ -89,19 +91,29 @@ class DetalleEquipoScreen extends StatelessWidget {
   }
 }
 
-class _InfoEquipo extends StatelessWidget {
+class _InfoEquipo extends StatefulWidget {
   const _InfoEquipo({required this.equipo});
 
   final Equipo equipo;
 
+  @override
+  State<_InfoEquipo> createState() => _InfoEquipoState();
+}
+
+class _InfoEquipoState extends State<_InfoEquipo> {
+  bool _creando = false;
+
+  Equipo get equipo => widget.equipo;
+
   /// Para comprar hay que tener cuenta: si no hay sesión, la pide primero
   /// y luego devuelve a la persona a esta misma pantalla (HU14).
   ///
-  /// Después crea el pedido en "Pendiente de pago" y abre la pantalla de
-  /// pago (HU12). El pago protegido es la HU01, del Sprint 2.
-  Future<void> _comprar(BuildContext context) async {
+  /// Después el servidor crea el pedido en «Pendiente de pago» (HU12) y se
+  /// abre la pantalla del pago protegido (HU01).
+  Future<void> _comprar() async {
+    if (_creando) return;
     final listo = await asegurarSesion(context);
-    if (!listo || !context.mounted) return;
+    if (!listo || !mounted) return;
 
     final usuario = SesionService.instancia.usuario;
     if (usuario == null) return;
@@ -110,16 +122,17 @@ class _InfoEquipo extends StatelessWidget {
       return;
     }
 
+    setState(() => _creando = true);
     try {
-      final pedido = PedidoService.instancia.crearPedido(
-        equipo: equipo,
-        compradorId: usuario.id,
-      );
+      final pedido = await PedidoService.instancia.crearPedido(equipo);
+      if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(builder: (_) => PagoScreen(pedido: pedido)),
       );
     } on ErrorDePedido catch (error) {
-      if (context.mounted) mostrarAviso(context, error.mensaje);
+      if (mounted) mostrarAviso(context, error.mensaje);
+    } finally {
+      if (mounted) setState(() => _creando = false);
     }
   }
 
@@ -177,13 +190,13 @@ class _InfoEquipo extends StatelessWidget {
           const _Aviso('Este equipo es tuyo. Así lo ven los compradores.')
         else if (equipo.estaDisponible)
           BotonPegatina(
-            texto: 'Comprar',
-            icono: Icons.lock_outline,
+            texto: _creando ? 'Creando tu pedido…' : 'Comprar',
+            icono: _creando ? Icons.hourglass_top : Icons.lock_outline,
             expandido: true,
-            alTocar: () => _comprar(context),
+            alTocar: _comprar,
           )
         else
-          const _Aviso('Este equipo ya está reservado por otro comprador.'),
+          _AvisoReservado(equipo: equipo),
       ],
     );
   }
@@ -276,6 +289,50 @@ class _PasoCorto extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Aviso de un equipo reservado. Si la persona fue quien lo compró, se lo
+/// dice y le ofrece ir a «Mis compras».
+class _AvisoReservado extends StatelessWidget {
+  const _AvisoReservado({required this.equipo});
+
+  final Equipo equipo;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!SesionService.instancia.haySesion) {
+      return const _Aviso('Este equipo ya está reservado por otro comprador.');
+    }
+    return FutureBuilder<Pedido?>(
+      future: PedidoService.instancia.compraPagada(equipo),
+      builder: (context, resultado) {
+        final mio = resultado.data;
+        if (mio == null) {
+          return const _Aviso(
+            'Este equipo ya está reservado por otro comprador.',
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _Aviso('Tú compraste este equipo (pedido ${mio.codigo}).'),
+            const SizedBox(height: 14),
+            BotonPegatina(
+              texto: 'Ver mis compras',
+              icono: Icons.receipt_long_outlined,
+              principal: false,
+              expandido: true,
+              alTocar: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const MisComprasScreen(),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
