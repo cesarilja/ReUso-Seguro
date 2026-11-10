@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/equipo.dart';
 import '../models/pedido.dart';
 import 'catalogo_service.dart';
+import 'pasarela.dart';
 
 /// Error con un mensaje listo para mostrarle al comprador.
 class ErrorDePedido implements Exception {
@@ -12,12 +13,31 @@ class ErrorDePedido implements Exception {
   final String mensaje;
 }
 
+/// Lo que respondió ReUso Pay a un intento de pago.
+class ResultadoPago {
+  const ResultadoPago({
+    required this.respuesta,
+    required this.pedido,
+    this.intentosRestantes = 0,
+  });
+
+  final RespuestaBanco respuesta;
+
+  /// El pedido como quedó después del intento.
+  final Pedido pedido;
+
+  /// Cuántos intentos rechazados más se permiten antes de cancelarlo.
+  final int intentosRestantes;
+
+  bool get aprobado => respuesta == RespuestaBanco.aprobado;
+}
+
 /// Crea los pedidos, registra su pago y los lista (HU12 y HU01).
 ///
-/// El pago es SIMULADO: no se mueve dinero real ni hay pasarela. Como pide
-/// la arquitectura, el navegador no cambia estados: llama a las funciones
-/// del servidor `crear_pedido`, `pagar_pedido` y `cancelar_pedido`
-/// (supabase/04_pago_protegido.sql), que revisan cada regla.
+/// El pago es SIMULADO: no se mueve dinero real. Como pide la arquitectura,
+/// el navegador no cambia estados: llama a las funciones del servidor
+/// `crear_pedido`, `procesar_pago` (ReUso Pay, supabase/10) y
+/// `cancelar_pedido` (supabase/04), que revisan cada regla.
 ///
 /// Avisa cada vez que un pedido cambia (patrón Observer), para que «Mis
 /// compras» se actualice sola.
@@ -39,27 +59,41 @@ class PedidoService extends ChangeNotifier {
     return Pedido.desdeFila(fila, equipo);
   }
 
-  /// HU01: paga el pedido de forma simulada. El dinero queda en custodia
-  /// y el equipo pasa a «Reservado».
+  /// HU01 con ReUso Pay: envía los datos del pago al servidor, que hace
+  /// de banco y responde si lo aprueba o lo rechaza (y por qué).
   ///
-  /// [simularRechazo] sirve para mostrar qué pasa cuando el pago no se
-  /// verifica: el pedido sigue pendiente y no se reserva nada.
-  Future<Pedido> pagar(
+  /// Si se aprueba, el dinero queda en custodia y el equipo pasa a
+  /// «Reservado». Si se rechaza, no se cobra nada. Todo es SIMULADO.
+  Future<ResultadoPago> pagar(
     Pedido pedido, {
     required MetodoPago metodo,
-    bool simularRechazo = false,
+    required Map<String, dynamic> datos,
   }) async {
-    // Simula el tiempo que tardaría en verificarse un pago real.
-    await Future<void>.delayed(const Duration(milliseconds: 1200));
-
-    final fila = await _llamar('pagar_pedido', {
+    final inicio = DateTime.now();
+    final respuesta = await _llamar('procesar_pago', {
       'p_pedido': pedido.id,
       'p_metodo': metodo.clave,
-      'p_simular_rechazo': simularRechazo,
+      'p_datos': datos,
     });
-    CatalogoService.avisarCambio(); // el equipo ahora sale «Reservado»
-    notifyListeners();
-    return Pedido.desdeFila(fila, pedido.equipo);
+    // Un banco real tarda unos segundos; así se ven los pasos del proceso.
+    final espera = const Duration(milliseconds: 2400) -
+        DateTime.now().difference(inicio);
+    if (!espera.isNegative) await Future<void>.delayed(espera);
+
+    final fila = respuesta['pedido'];
+    final actualizado = fila is Map<String, dynamic>
+        ? Pedido.desdeFila(fila, pedido.equipo)
+        : pedido;
+    final resultado = ResultadoPago(
+      respuesta: RespuestaBanco.desde(respuesta['codigo'] as String?),
+      pedido: actualizado,
+      intentosRestantes: (respuesta['intentos_restantes'] as num?)?.toInt() ?? 0,
+    );
+    if (resultado.aprobado || !actualizado.estaPendiente) {
+      CatalogoService.avisarCambio(); // el equipo ahora sale «Reservado»
+      notifyListeners();
+    }
+    return resultado;
   }
 
   /// Cancela un pedido que todavía no se ha pagado.
@@ -165,9 +199,12 @@ class PedidoService extends ChangeNotifier {
       debugPrint('[PedidoService] $funcion falló: ${error.code} ${error.message}');
       if (error.code == 'PGRST202' ||
           error.message.contains('Could not find the function')) {
-        throw const ErrorDePedido(
-          'El servidor todavía no tiene activado el pago protegido. Falta '
-          'correr supabase/04_pago_protegido.sql en Supabase.',
+        throw ErrorDePedido(
+          funcion == 'procesar_pago'
+              ? 'El servidor todavía no tiene activado ReUso Pay. Falta '
+                  'correr supabase/10_pasarela_simulada.sql en Supabase.'
+              : 'El servidor todavía no tiene activado el pago protegido. '
+                  'Falta correr supabase/04_pago_protegido.sql en Supabase.',
         );
       }
       throw _traducir(error.message);
@@ -188,13 +225,6 @@ class PedidoService extends ChangeNotifier {
   /// El servidor responde con un código corto; aquí lo pasamos a un
   /// mensaje que dice qué pasó y qué hacer.
   ErrorDePedido _traducir(String mensaje) {
-    if (mensaje.contains('RECHAZADO')) {
-      return const ErrorDePedido(
-        'El pago no se pudo verificar. No se te cobró nada y tu pedido sigue '
-        'en «Pendiente de pago». Revisa los datos de tu método de pago o '
-        'elige otro, y vuelve a intentarlo.',
-      );
-    }
     if (mensaje.contains('YA_COMPRADO')) {
       return const ErrorDePedido(
         'Ya compraste este equipo. Míralo en «Mis compras», en el menú de '

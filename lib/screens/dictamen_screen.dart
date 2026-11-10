@@ -103,8 +103,11 @@ class _DictamenScreenState extends State<DictamenScreen> {
       if (!mounted) return;
       mostrarAviso(
         context,
-        'Dictamen emitido: pedido ${widget.pedido.codigo} '
-        '${aprobado ? 'aprobado' : 'rechazado'}.',
+        aprobado
+            ? 'Dictamen emitido: pedido ${widget.pedido.codigo} aprobado. '
+                'El pago se le libera al vendedor.'
+            : 'Dictamen emitido: pedido ${widget.pedido.codigo} rechazado. '
+                'Se le devuelve el 100 % al comprador.',
       );
       Navigator.of(context).pop();
     } on ErrorDeInspeccion catch (error) {

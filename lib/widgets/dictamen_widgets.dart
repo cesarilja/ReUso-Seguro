@@ -29,8 +29,8 @@ class TarjetaDictamen extends StatelessWidget {
             : 'Tu equipo pasó la inspección. Te lo enviaremos.')
         : (paraVendedor
             ? 'El equipo no pasó la inspección. Te lo devolveremos.'
-            : 'El equipo no pasó la inspección. Te devolveremos el monto '
-                'completo.');
+            : 'El equipo no pasó la inspección. Recuperas el monto '
+                'completo que pagaste.');
 
     return Container(
       width: double.infinity,

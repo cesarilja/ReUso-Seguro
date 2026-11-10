@@ -120,7 +120,7 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
                   .where((v) => v.pagoLiberado)
                   .fold<double>(0, (suma, v) => suma + v.recibeVendedor);
               final porCobrar = ventas
-                  .where((v) => !v.pagoLiberado && v.estado != EstadoPedido.rechazado)
+                  .where((v) => !v.pagoLiberado && !v.noPasoInspeccion)
                   .fold<double>(0, (suma, v) => suma + v.recibeVendedor);
 
               return Column(
@@ -336,7 +336,8 @@ class _TarjetaVenta extends StatelessWidget {
   Widget build(BuildContext context) {
     final equipo = venta.equipo;
     final liberadoEn = venta.liberadoEn;
-    final rechazado = venta.estado == EstadoPedido.rechazado;
+    // HU13: rechazado o ya reembolsado, el vendedor no cobra ni paga comisión.
+    final rechazado = venta.noPasoInspeccion;
 
     return Pegatina(
       child: Padding(
@@ -383,16 +384,16 @@ class _TarjetaVenta extends StatelessWidget {
             const SizedBox(height: 6),
             FilaDato(titulo: 'Precio de venta', valor: venta.montoFormateado),
             FilaDato(
-              titulo: 'Comisión de ReUso Seguro (8 %)',
+              titulo: rechazado
+                  ? 'Comisión de ReUso Seguro (no se cobra)'
+                  : 'Comisión de ReUso Seguro (8 %)',
               valor: '- ${formatearDolares(venta.comisionEstimada)}',
             ),
             FilaDato(
               titulo: rechazado
                   ? 'No recibes pago'
                   : (venta.pagoLiberado ? 'Recibiste' : 'Recibirás'),
-              valor: rechazado
-                  ? formatearDolares(0)
-                  : formatearDolares(venta.recibeVendedor),
+              valor: formatearDolares(venta.recibeVendedor),
               destacado: true,
             ),
             const SizedBox(height: 10),
@@ -433,9 +434,11 @@ class _TarjetaVenta extends StatelessWidget {
             : 'Te liberamos el pago el ${formatearFecha(liberadoEn)} '
                 '(simulado, no se mueve dinero real).';
       case EstadoPedido.rechazado:
+        return 'El equipo no pasó la inspección. Estamos devolviéndole el '
+            'dinero al comprador.';
       case EstadoPedido.reembolsado:
-        return 'El equipo no pasó la inspección: el comprador recibe su '
-            'reembolso y te devolveremos el equipo.';
+        return 'El equipo no pasó la inspección. Le devolvimos el 100 % al '
+            'comprador y tu equipo volvió a estar disponible en el catálogo.';
       case EstadoPedido.pendienteDePago:
       case EstadoPedido.cancelado:
         return '';

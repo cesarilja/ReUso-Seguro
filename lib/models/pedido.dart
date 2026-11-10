@@ -71,12 +71,17 @@ class Pedido {
     this.comision,
     this.montoVendedor,
     this.liberadoEn,
+    this.montoReembolsado,
+    this.reembolsadoEn,
+    this.referenciaReembolso,
+    this.pagoDetalle,
   });
 
   /// Crea un pedido a partir de una fila de la tabla `pedidos`.
   factory Pedido.desdeFila(Map<String, dynamic> fila, Equipo equipo) {
     final pagado = fila['pagado_en'] as String?;
     final liberado = fila['liberado_en'] as String?;
+    final reembolsado = fila['reembolsado_en'] as String?;
     return Pedido(
       id: fila['id'] as String,
       numero: (fila['numero'] as num).toInt(),
@@ -93,6 +98,11 @@ class Pedido {
       comision: (fila['comision'] as num?)?.toDouble(),
       montoVendedor: (fila['monto_vendedor'] as num?)?.toDouble(),
       liberadoEn: liberado == null ? null : DateTime.parse(liberado).toLocal(),
+      montoReembolsado: (fila['monto_reembolsado'] as num?)?.toDouble(),
+      reembolsadoEn:
+          reembolsado == null ? null : DateTime.parse(reembolsado).toLocal(),
+      referenciaReembolso: fila['referencia_reembolso'] as String?,
+      pagoDetalle: fila['pago_detalle'] as String?,
     );
   }
 
@@ -113,6 +123,10 @@ class Pedido {
   /// Número del comprobante del pago simulado.
   final String? referencia;
 
+  /// Con qué se pagó, sin datos sensibles: «Visa •••• 4242» o
+  /// «Banesco · Ref. 123456» (ReUso Pay).
+  final String? pagoDetalle;
+
   /// Cuándo quedó el pago en custodia. Es null mientras no se pague.
   final DateTime? pagadoEn;
 
@@ -130,13 +144,33 @@ class Pedido {
   /// Cuándo se le liberó el pago al vendedor.
   final DateTime? liberadoEn;
 
+  /// HU13: cuánto se le devolvió al comprador, cuándo y con qué número de
+  /// comprobante. Los pone el servidor cuando el equipo se rechaza.
+  final double? montoReembolsado;
+  final DateTime? reembolsadoEn;
+  final String? referenciaReembolso;
+
   /// La comisión que se usará, aunque todavía no se haya liberado.
   static const double tasaComision = 0.08;
 
-  double get comisionEstimada =>
-      comision ?? (monto * tasaComision * 100).round() / 100;
+  /// El equipo no pasó la inspección (con o sin el reembolso ya hecho).
+  bool get noPasoInspeccion =>
+      estado == EstadoPedido.rechazado || estado == EstadoPedido.reembolsado;
 
-  double get recibeVendedor => montoVendedor ?? monto - comisionEstimada;
+  /// HU13: el reembolso ya se hizo.
+  bool get fueReembolsado => estado == EstadoPedido.reembolsado;
+
+  /// Si el equipo se rechaza no se cobra comisión (HU13).
+  double get comisionEstimada => noPasoInspeccion
+      ? 0.0
+      : comision ?? (monto * tasaComision * 100).round() / 100;
+
+  /// Si el equipo se rechaza el vendedor no recibe nada (HU13).
+  double get recibeVendedor =>
+      noPasoInspeccion ? 0.0 : montoVendedor ?? monto - comisionEstimada;
+
+  /// HU13: lo que se le devuelve al comprador, siempre el 100 % del pago.
+  double get montoADevolver => montoReembolsado ?? monto;
 
   bool get pagoLiberado => liberadoEn != null;
 
@@ -145,6 +179,22 @@ class Pedido {
   String get montoFormateado => formatearDolares(monto);
 
   bool get estaPendiente => estado == EstadoPedido.pendienteDePago;
+
+  /// Minutos para pagar un pedido (igual que en el servidor, ReUso Pay).
+  static const int minutosParaPagar = 15;
+
+  /// Hasta cuándo se puede pagar. Después el pedido vence y se cancela.
+  DateTime get expiraEn => creadoEn.add(const Duration(minutes: minutosParaPagar));
+
+  /// Cuánto tiempo queda para pagar (cero si ya venció).
+  Duration tiempoRestante([DateTime? ahora]) {
+    final queda = expiraEn.difference(ahora ?? DateTime.now());
+    return queda.isNegative ? Duration.zero : queda;
+  }
+
+  /// Pendiente, pero se acabó el tiempo para pagar.
+  bool vencido([DateTime? ahora]) =>
+      estaPendiente && tiempoRestante(ahora) == Duration.zero;
 
   bool get estaCancelado => estado == EstadoPedido.cancelado;
 

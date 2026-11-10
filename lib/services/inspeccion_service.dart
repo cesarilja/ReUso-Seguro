@@ -128,6 +128,8 @@ class InspeccionService extends ChangeNotifier {
     'aprobado',
     'rechazado',
     'pago_liberado',
+    // HU13: un rechazado pasa solo a «reembolsado»; no debe desaparecer.
+    'reembolsado',
   ];
 
   SupabaseClient get _cliente => Supabase.instance.client;

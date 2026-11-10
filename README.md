@@ -53,14 +53,33 @@ flutter run -d chrome
   - si algo falla a mitad de camino, se borran las fotos subidas y no se publica nada;
   - el vendedor no puede comprar su propio equipo.
 - La base de datos revisa las mismas reglas (`supabase/03_publicar.sql`): nadie puede publicar con datos incompletos ni a nombre de otro, aunque lo intente desde fuera de la app.
-- **Pago protegido simulado** (HU01: `lib/screens/pago_screen.dart`, `lib/services/pedido_service.dart`):
-  - «Comprar» crea el pedido en Supabase en «Pendiente de pago» (HU12);
-  - el comprador elige cómo pagar (tarjeta, Pago Móvil o Zelle), confirma el monto en un diálogo y ve «Verificando el pago…» mientras se procesa;
-  - al pagar, el pedido pasa a «Pago en custodia», el equipo queda «Reservado» y se muestra un comprobante con referencia y la línea de tiempo del pedido;
-  - si el pago se rechaza (hay un interruptor para simularlo), se explica qué pasó, no se cobra nada y se puede reintentar;
-  - el pedido se puede cancelar mientras no se haya pagado;
-  - «Mis compras» (menú de la cuenta) lista los pedidos con su estado.
-- **El navegador nunca cambia el estado del pago ni la reserva**: lo hacen las funciones del servidor `crear_pedido`, `pagar_pedido` y `cancelar_pedido` (`supabase/04_pago_protegido.sql`), que bloquean el equipo mientras se paga para que dos personas no lo compren a la vez. **No se mueve dinero real.**
+- **Pago protegido con ReUso Pay, nuestra pasarela simulada** (HU01: `lib/screens/pago_screen.dart`, `lib/services/pasarela.dart`, `lib/widgets/pasarela_widgets.dart`, `supabase/10_pasarela_simulada.sql`):
+  - «Comprar» crea el pedido en Supabase en «Pendiente de pago» (HU12). Hay **15 minutos** para pagarlo (cuenta regresiva); si vence, se cancela solo y se puede volver a intentar;
+  - el comprador elige cómo pagar y escribe sus datos como en una pasarela real:
+    - **Tarjeta**: la tarjeta se dibuja mientras se escribe (y se voltea al escribir el CVV); la app revisa el número (algoritmo de Luhn), la fecha y el CVV antes de enviarlo. Solo se guarda la marca y los últimos 4 dígitos;
+    - **Pago Móvil y Zelle**: se muestran los datos para transferir (con botón de copiar) y el comprador confirma con su banco, teléfono, cédula o correo, la referencia y el monto;
+  - el **servidor hace de banco** (`procesar_pago`): aprueba o rechaza con un motivo real (fondos insuficientes, tarjeta vencida, referencia no encontrada, monto distinto, referencia ya usada…). La app no decide nada;
+  - mientras se procesa se ven los pasos («Conectando con tu banco», «Verificando…», «Autorizando…»); si se rechaza, se explica qué pasó, qué hacer, que no se cobró nada y cuántos intentos quedan. Con 5 rechazos el pedido se cancela por seguridad;
+  - al aprobarse, el pedido pasa a «Pago en custodia», el equipo queda «Reservado» y se muestra el comprobante (con «Pagado con: Visa •••• 4242», por ejemplo);
+  - cada intento queda guardado en la tabla `intentos_pago`, como el registro de una pasarela;
+  - el pedido se puede cancelar mientras no se haya pagado, y «Mis compras» muestra hasta cuándo se puede pagar cada pedido pendiente.
+- **Datos de prueba de ReUso Pay** (también se ven tocando la insignia «Modo de prueba» en la pantalla de pago). Ningún banco está conectado y **no se mueve dinero real**:
+
+  | Método | Dato | Respuesta |
+  |---|---|---|
+  | Tarjeta | 4242 4242 4242 4242 | Aprobado |
+  | Tarjeta | 5555 5555 5555 4444 | Aprobado (Mastercard) |
+  | Tarjeta | 4000 0000 0000 0002 | Tarjeta rechazada |
+  | Tarjeta | 4000 0000 0000 9995 | Fondos insuficientes |
+  | Tarjeta | 4000 0000 0000 0069 | Tarjeta vencida |
+  | Tarjeta | 4000 0000 0000 0127 | CVV incorrecto |
+  | Pago Móvil o Zelle | Referencia terminada en 0000 | Pago no encontrado |
+  | Pago Móvil o Zelle | Monto distinto al del pedido | Monto no coincide |
+  | Pago Móvil o Zelle | Una referencia ya usada en otro pedido | Referencia ya usada |
+  | Pago Móvil o Zelle | Cualquier otra referencia y el monto exacto | Aprobado |
+
+  En las tarjetas sirve cualquier fecha futura y cualquier CVV. Pruebas: `flutter test` (`test/pasarela_test.dart`) y `supabase/pruebas/10_verificar_pasarela.sql` (hace pagos de prueba, lo deshace todo al final y todas las filas deben decir «OK»).
+- **El navegador nunca cambia el estado del pago ni la reserva**: lo hacen las funciones del servidor `crear_pedido`, `procesar_pago` y `cancelar_pedido`, que bloquean el equipo mientras se paga para que dos personas no lo compren a la vez. **No se mueve dinero real.**
 - **Checklist de inspección en el Hub** (HU07: `lib/screens/panel_hub_screen.dart`, `lib/screens/inspeccion_screen.dart`, `lib/services/inspeccion_service.dart`):
   - solo las cuentas de inspector técnico ven «Panel del Hub» en el menú de la cuenta;
   - el panel ordena el trabajo en tres grupos (por recibir, por inspeccionar e inspeccionados) con contadores arriba;
@@ -82,6 +101,12 @@ flutter run -d chrome
   - **Mis ventas** (menú de la cuenta) muestra cada venta con el desglose: precio, comisión y lo que recibe; arriba, lo ya recibido y lo que sigue en custodia;
   - el vendedor ve en cada venta qué sigue (llevar el equipo al Hub, en revisión, pago liberado) y el dictamen del inspector;
   - el navegador no puede liberar pagos: la función no tiene permisos para la app. **No se mueve dinero real.**
+- **Reembolso por equipo rechazado** (HU13 · Sprint 3: `supabase/09_reembolso.sql`, `lib/widgets/pedido_widgets.dart`):
+  - cuando el inspector rechaza el equipo, un disparador en el servidor pasa el pedido a «Reembolsado» y le devuelve al comprador el 100 % de lo que pagó, sin comisión;
+  - en **Mis compras** el comprador ve el comprobante del reembolso: número (RE-…), monto, comisión $0,00, a dónde se devolvió y la fecha;
+  - en **Mis ventas** el vendedor ve «No recibes pago» y la comisión «no se cobra»; el equipo vuelve a estar «Disponible» en el catálogo;
+  - el navegador no puede hacer reembolsos: la función no tiene permisos para la app. **No se mueve dinero real.**
+  - Pruebas: `flutter test` (pruebas unitarias en `test/reembolso_test.dart`) y `supabase/pruebas/09_verificar_reembolso.sql` (las 5 filas deben decir «OK»).
 - **Todo en tiempo real** (`lib/services/tiempo_real_service.dart`, `supabase/08_tiempo_real.sql`): con Supabase Realtime, el catálogo, el detalle de un equipo, Mis compras, Mis ventas y el Panel del Hub se actualizan solos cuando otra persona compra, publica, guarda un checklist o emite un dictamen. No hay que recargar la página. Cada persona solo recibe los cambios que tiene permiso de ver.
 - **Navegación y nuevas páginas** (`lib/widgets/navegacion.dart`, `lib/widgets/barra_superior.dart`):
   - la barra de arriba muestra las secciones: **Inicio**, **Cómo funciona**, **Mis compras**, **Mis ventas** y (solo inspectores) **Panel del Hub**. La sección actual queda subrayada en orquídea y en negrita (heurística 1: el usuario sabe dónde está);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../formato.dart';
 import '../models/pedido.dart';
 import '../tema.dart';
 
@@ -275,6 +276,104 @@ class RecuadroInfo extends StatelessWidget {
           ),
           if (hijo != null) ...[const SizedBox(height: 8), hijo!],
         ],
+      ),
+    );
+  }
+}
+
+/// HU13: comprobante del reembolso cuando el equipo no pasa la inspección.
+///
+/// Usabilidad: el estado se lee por el título, el ícono y el color a la vez
+/// (WCAG 1.4.1) y se aclara que el dinero es simulado (heurística 1:
+/// visibilidad del estado; heurística 2: lenguaje del usuario).
+class ComprobanteReembolso extends StatelessWidget {
+  const ComprobanteReembolso({super.key, required this.pedido});
+
+  final Pedido pedido;
+
+  @override
+  Widget build(BuildContext context) {
+    const verde = Color(0xFF1F7A44);
+    final hecho = pedido.fueReembolsado;
+    final reembolsadoEn = pedido.reembolsadoEn;
+    final metodo = pedido.metodo;
+
+    // Mientras el servidor termina, se dice qué está pasando (sin dejar
+    // al comprador con la duda).
+    if (!hecho) {
+      return const RecuadroInfo(
+        icono: Icons.hourglass_top,
+        texto: 'Estamos procesando tu reembolso. En un momento verás aquí '
+            'el comprobante.',
+      );
+    }
+
+    return Semantics(
+      container: true,
+      label: 'Comprobante de reembolso',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: verde, width: 2),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.assignment_return_outlined, color: verde, size: 28),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Reembolso completado',
+                        style: Tipos.subtitulo.copyWith(color: verde),
+                      ),
+                      Text(
+                        'Te devolvimos el 100 % de lo que pagaste.',
+                        style: Tipos.pequeno.copyWith(
+                          fontSize: 14,
+                          color: ColoresApp.tinta,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Container(height: 2, color: ColoresApp.nube),
+            const SizedBox(height: 4),
+            FilaDato(
+              titulo: 'Comprobante',
+              valor: pedido.referenciaReembolso ?? '—',
+            ),
+            FilaDato(titulo: 'Pagaste', valor: pedido.montoFormateado),
+            FilaDato(
+              titulo: 'Comisión cobrada',
+              valor: formatearDolares(0),
+            ),
+            if (metodo != null)
+              FilaDato(titulo: 'Devuelto a', valor: metodo.nombre),
+            if (reembolsadoEn != null)
+              FilaDato(titulo: 'Fecha', valor: formatearFecha(reembolsadoEn)),
+            FilaDato(
+              titulo: 'Te devolvimos',
+              valor: formatearDolares(pedido.montoADevolver),
+              destacado: true,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Reembolso simulado: en esta versión no se mueve dinero real.',
+              style: Tipos.pequeno,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -165,21 +165,36 @@ class _TarjetaPedido extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 14),
-              if (pedido.estaPendiente)
+              if (pedido.estaPendiente) ...[
+                // ReUso Pay: cada pedido tiene un tiempo límite para pagarse.
+                if (pedido.vencido())
+                  const RecuadroInfo(
+                    icono: Icons.timer_off_outlined,
+                    texto: 'Se acabó el tiempo para pagar este pedido. No se '
+                        'te cobró nada.',
+                  )
+                else
+                  RecuadroInfo(
+                    icono: Icons.timer_outlined,
+                    texto: 'Tienes hasta el ${formatearFecha(pedido.expiraEn)} '
+                        'para pagar. Después el pedido vence.',
+                  ),
+                const SizedBox(height: 12),
                 BotonPegatina(
-                  texto: 'Pagar ahora',
-                  icono: Icons.lock_outline,
+                  texto: pedido.vencido() ? 'Volver a intentarlo' : 'Pagar ahora',
+                  icono: pedido.vencido() ? Icons.refresh : Icons.lock_outline,
                   expandido: true,
                   alTocar: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => PagoScreen(pedido: pedido),
                     ),
                   ),
-                )
+                ),
+              ]
               else if (pedido.estaCancelado)
                 const RecuadroInfo(
                   icono: Icons.block,
-                  texto: 'Cancelaste este pedido. No se te cobró nada.',
+                  texto: 'Este pedido se canceló. No se te cobró nada.',
                 )
               else ...[
                 // HU08: el resultado de la inspección, con color y texto.
@@ -187,7 +202,10 @@ class _TarjetaPedido extends StatelessWidget {
                   TarjetaDictamen(dictamen: pedido.dictamen!),
                   const SizedBox(height: 12),
                 ],
-                if (pedido.estado != EstadoPedido.rechazado)
+                // HU13: si no pasó, en vez del seguimiento va el comprobante.
+                if (pedido.noPasoInspeccion)
+                  ComprobanteReembolso(pedido: pedido)
+                else
                   _Seguimiento(pedido: pedido),
                 if (pedido.inspeccion != null && pedido.dictamen != null) ...[
                   const SizedBox(height: 12),
