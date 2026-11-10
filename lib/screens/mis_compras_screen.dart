@@ -2,15 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../formato.dart';
 import '../models/pedido.dart';
+import '../models/rastreo.dart';
 import '../services/pedido_service.dart';
 import '../services/sesion_service.dart';
 import '../tema.dart';
+import '../widgets/avisos.dart';
 import '../widgets/dictamen_widgets.dart';
 import '../widgets/imagen_equipo.dart';
 import '../widgets/navegacion.dart';
 import '../widgets/pagina_base.dart';
 import '../widgets/pedido_widgets.dart';
 import '../widgets/pegatina.dart';
+import 'certificado_screen.dart';
 import 'pago_screen.dart';
 
 /// Lista de pedidos del comprador, con el estado de cada pago (HU12 y HU01).
@@ -25,7 +28,11 @@ class MisComprasScreen extends StatefulWidget {
 }
 
 class _MisComprasScreenState extends State<MisComprasScreen> {
-  late Future<List<Pedido>> _pedidos = PedidoService.instancia.misPedidos();
+  late Future<List<Pedido>> _pedidos = _cargar();
+
+  /// Estado de cada pedido en la última carga, para avisar cuando cambia
+  /// de fase en vivo (HU02, escenario 2).
+  final Map<String, EstadoPedido> _estadosAnteriores = {};
 
   @override
   void initState() {
@@ -44,7 +51,25 @@ class _MisComprasScreenState extends State<MisComprasScreen> {
 
   void _recargar() {
     if (!mounted) return;
-    setState(() => _pedidos = PedidoService.instancia.misPedidos());
+    setState(() => _pedidos = _cargar());
+  }
+
+  /// Carga los pedidos y, si alguno avanzó de fase desde la última vez,
+  /// lo avisa: «Tu equipo pasó a: En diagnóstico».
+  Future<List<Pedido>> _cargar() async {
+    final pedidos = await PedidoService.instancia.misPedidos();
+    final primeraCarga = _estadosAnteriores.isEmpty;
+    final avisos = <String>[];
+    for (final pedido in pedidos) {
+      final antes = _estadosAnteriores[pedido.id];
+      if (!primeraCarga && antes != null && antes != pedido.estado) {
+        final aviso = Rastreo.avisoDeCambio(antes, pedido);
+        if (aviso != null) avisos.add(aviso);
+      }
+      _estadosAnteriores[pedido.id] = pedido.estado;
+    }
+    if (avisos.isNotEmpty && mounted) mostrarAviso(context, avisos.join('\n'));
+    return pedidos;
   }
 
   @override
@@ -202,15 +227,30 @@ class _TarjetaPedido extends StatelessWidget {
                   TarjetaDictamen(dictamen: pedido.dictamen!),
                   const SizedBox(height: 12),
                 ],
-                // HU13: si no pasó, en vez del seguimiento va el comprobante.
-                if (pedido.noPasoInspeccion)
-                  ComprobanteReembolso(pedido: pedido)
-                else
-                  _Seguimiento(pedido: pedido),
-                if (pedido.inspeccion != null && pedido.dictamen != null) ...[
+                // HU02: dónde está el dinero, siempre a la vista.
+                DondeEstaTuDinero(pedido: pedido),
+                const SizedBox(height: 12),
+                // HU13: si no pasó, el comprobante del reembolso.
+                if (pedido.noPasoInspeccion) ...[
+                  ComprobanteReembolso(pedido: pedido),
                   const SizedBox(height: 12),
-                  _ChecklistDelHub(pedido: pedido),
                 ],
+                _Seguimiento(pedido: pedido),
+                const SizedBox(height: 12),
+                // HU03: el certificado técnico del inspector.
+                BotonPegatina(
+                  texto: 'Ver certificado técnico',
+                  icono: pedido.dictamen == null
+                      ? Icons.hourglass_top
+                      : Icons.workspace_premium_outlined,
+                  principal: false,
+                  expandido: true,
+                  alTocar: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => CertificadoScreen(pedido: pedido),
+                    ),
+                  ),
+                ),
               ],
             ],
           ),
@@ -220,11 +260,19 @@ class _TarjetaPedido extends StatelessWidget {
   }
 }
 
-/// Línea de tiempo plegable, para no llenar la lista de información.
+/// HU02: la línea de tiempo plegable, con la fase actual en el título.
 class _Seguimiento extends StatelessWidget {
   const _Seguimiento({required this.pedido});
 
   final Pedido pedido;
+
+  String _titulo() {
+    final rastreo = Rastreo.de(pedido);
+    final fase = rastreo.faseActual;
+    if (fase == null) return 'Mira en qué va tu pedido.';
+    return 'Fase ${rastreo.indiceActual + 1} de ${Rastreo.totalFases}: '
+        '${fase.titulo}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -241,52 +289,16 @@ class _Seguimiento extends StatelessWidget {
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           leading: const Icon(Icons.local_shipping_outlined,
               color: ColoresApp.tinta),
+          // Se abre solo mientras el pedido sigue en camino o en el Hub.
+          initiallyExpanded: Rastreo.de(pedido).indiceActual < 3,
           title: Text(
-            pedido.estado == EstadoPedido.pagoLiberado ||
-                    pedido.estado == EstadoPedido.enCamino
-                ? 'Tu equipo fue aprobado. Mira en qué va tu pedido.'
-                : 'Tu dinero sigue retenido. Mira en qué va tu pedido.',
+            _titulo(),
             style: Tipos.pequeno.copyWith(
               fontSize: 14.5,
               color: ColoresApp.tinta,
             ),
           ),
-          children: [LineaDeTiempo(estado: pedido.estado)],
-        ),
-      ),
-    );
-  }
-}
-
-/// Transparencia: el comprador puede ver qué revisó el inspector.
-class _ChecklistDelHub extends StatelessWidget {
-  const _ChecklistDelHub({required this.pedido});
-
-  final Pedido pedido;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: ColoresApp.nube, width: 2),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          leading: const Icon(Icons.fact_check_outlined, color: ColoresApp.tinta),
-          title: Text(
-            'Ver lo que revisó el inspector',
-            style: Tipos.pequeno.copyWith(fontSize: 14.5, color: ColoresApp.tinta),
-          ),
-          children: [
-            ResumenChecklist(
-              inspeccion: pedido.inspeccion!,
-              categoria: pedido.equipo.categoria,
-            ),
-          ],
+          children: [LineaDeTiempo(pedido: pedido)],
         ),
       ),
     );
@@ -329,8 +341,8 @@ class _SinCompras extends StatelessWidget {
       children: [
         const RecuadroInfo(
           icono: Icons.shopping_bag_outlined,
-          texto: 'Todavía no has comprado nada. Cuando compres un equipo, '
-              'aquí verás su pedido y el estado del pago.',
+          texto: 'Aún no tienes compras. Cuando compres un equipo, aquí '
+              'verás en qué fase va y dónde está tu dinero.',
         ),
         const SizedBox(height: 20),
         BotonPegatina(

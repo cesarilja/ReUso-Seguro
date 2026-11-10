@@ -1084,7 +1084,7 @@ class _Comprobante extends StatelessWidget {
         const SizedBox(height: 24),
         const Text('¿Qué sigue?', style: Tipos.subtitulo),
         const SizedBox(height: 12),
-        LineaDeTiempo(estado: pedido.estado),
+        LineaDeTiempo(pedido: pedido),
         const SizedBox(height: 8),
         const RecuadroInfo(
           icono: Icons.verified_user_outlined,

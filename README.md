@@ -107,6 +107,17 @@ flutter run -d chrome
   - en **Mis ventas** el vendedor ve «No recibes pago» y la comisión «no se cobra»; el equipo vuelve a estar «Disponible» en el catálogo;
   - el navegador no puede hacer reembolsos: la función no tiene permisos para la app. **No se mueve dinero real.**
   - Pruebas: `flutter test` (pruebas unitarias en `test/reembolso_test.dart`) y `supabase/pruebas/09_verificar_reembolso.sql` (las 5 filas deben decir «OK»).
+- **Rastreo del pedido** (HU02 · Sprint 3: `lib/models/rastreo.dart`, `lib/widgets/pedido_widgets.dart`, `supabase/11_rastreo_y_certificado.sql`):
+  - en «Mis compras» cada pedido muestra sus 5 fases: Pago en custodia → Recibido en el Hub → En diagnóstico → Dictamen → Pago liberado o Reembolso, con la fase actual resaltada y la **fecha y hora** de cada fase terminada (las anota el servidor);
+  - un recuadro dice siempre **dónde está el dinero**: en custodia, liberado al vendedor o devuelto al comprador;
+  - si el pedido cambia de fase con la página abierta, aparece el aviso «Tu equipo pasó a: En diagnóstico», sin recargar.
+- **Certificado técnico** (HU03 · Sprint 3: `lib/screens/certificado_screen.dart`, `lib/models/certificado.dart`, `lib/services/certificado_pdf.dart`):
+  - el botón «Ver certificado técnico» (en «Mis compras» y en «Mis ventas») abre el certificado: resultado, inspector que lo firmó, fecha, checklist según el tipo de equipo con «Bien», «Falla» o «No aplica», y las fotos de evidencia de cada falla (se amplían al tocarlas);
+  - compara **lado a lado** lo que declaró el vendedor y lo que encontró el inspector;
+  - si todavía no hay dictamen, explica que estará listo cuando termine la revisión y muestra la fase actual;
+  - **«Guardar en PDF»** descarga el certificado como `Certificado_P-1001_2026-11-05.pdf` (código del pedido y fecha del dictamen), con las fotos de evidencia;
+  - solo lo pueden ver el comprador, el vendedor y los inspectores (reglas RLS del servidor).
+  - Pruebas: `flutter test` (`test/rastreo_test.dart`, `test/certificado_test.dart` y las pruebas de widget en `test/widget/`) y `supabase/pruebas/11_verificar_rastreo_certificado.sql` (todas las filas deben decir «OK»).
 - **Todo en tiempo real** (`lib/services/tiempo_real_service.dart`, `supabase/08_tiempo_real.sql`): con Supabase Realtime, el catálogo, el detalle de un equipo, Mis compras, Mis ventas y el Panel del Hub se actualizan solos cuando otra persona compra, publica, guarda un checklist o emite un dictamen. No hay que recargar la página. Cada persona solo recibe los cambios que tiene permiso de ver.
 - **Navegación y nuevas páginas** (`lib/widgets/navegacion.dart`, `lib/widgets/barra_superior.dart`):
   - la barra de arriba muestra las secciones: **Inicio**, **Cómo funciona**, **Mis compras**, **Mis ventas** y (solo inspectores) **Panel del Hub**. La sección actual queda subrayada en orquídea y en negrita (heurística 1: el usuario sabe dónde está);
