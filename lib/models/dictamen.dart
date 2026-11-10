@@ -21,6 +21,7 @@ class Dictamen {
     required this.resultado,
     required this.motivo,
     required this.emitidoEn,
+    this.inspectorNombre,
   });
 
   factory Dictamen.desdeFila(Map<String, dynamic> fila) => Dictamen(
@@ -28,6 +29,7 @@ class Dictamen {
         resultado: ResultadoDictamen.desde(fila['resultado'] as String?),
         motivo: (fila['motivo'] as String?) ?? '',
         emitidoEn: DateTime.parse(fila['creado_en'] as String).toLocal(),
+        inspectorNombre: fila['inspector_nombre'] as String?,
       );
 
   /// La relación puede llegar como objeto o como lista, según Supabase.
@@ -45,6 +47,11 @@ class Dictamen {
   /// Por qué se rechazó, o por qué se aprobó a pesar de alguna falla.
   final String motivo;
   final DateTime emitidoEn;
+
+  /// HU03: quién firmó el dictamen (lo copia el servidor).
+  final String? inspectorNombre;
+
+  String get firmadoPor => inspectorNombre ?? 'Inspector técnico del Hub';
 
   bool get aprobado => resultado == ResultadoDictamen.aprobado;
 }

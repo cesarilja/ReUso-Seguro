@@ -13,6 +13,7 @@ import '../widgets/navegacion.dart';
 import '../widgets/pagina_base.dart';
 import '../widgets/pedido_widgets.dart';
 import '../widgets/pegatina.dart';
+import 'certificado_screen.dart';
 import 'detalle_equipo_screen.dart';
 
 /// Las ventas del vendedor y en qué estado está cada pago (HU06).
@@ -399,6 +400,19 @@ class _TarjetaVenta extends StatelessWidget {
             const SizedBox(height: 10),
             if (venta.dictamen != null) ...[
               TarjetaDictamen(dictamen: venta.dictamen!, paraVendedor: true),
+              const SizedBox(height: 10),
+              // HU03: el vendedor también puede ver el certificado.
+              BotonPegatina(
+                texto: 'Ver certificado técnico',
+                icono: Icons.workspace_premium_outlined,
+                principal: false,
+                expandido: true,
+                alTocar: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => CertificadoScreen(pedido: venta),
+                  ),
+                ),
+              ),
               const SizedBox(height: 10),
             ],
             RecuadroInfo(

@@ -75,6 +75,8 @@ class Pedido {
     this.reembolsadoEn,
     this.referenciaReembolso,
     this.pagoDetalle,
+    this.recibidoEn,
+    this.diagnosticoEn,
   });
 
   /// Crea un pedido a partir de una fila de la tabla `pedidos`.
@@ -82,6 +84,10 @@ class Pedido {
     final pagado = fila['pagado_en'] as String?;
     final liberado = fila['liberado_en'] as String?;
     final reembolsado = fila['reembolsado_en'] as String?;
+    DateTime? fecha(String columna) {
+      final valor = fila[columna] as String?;
+      return valor == null ? null : DateTime.parse(valor).toLocal();
+    }
     return Pedido(
       id: fila['id'] as String,
       numero: (fila['numero'] as num).toInt(),
@@ -103,6 +109,8 @@ class Pedido {
           reembolsado == null ? null : DateTime.parse(reembolsado).toLocal(),
       referenciaReembolso: fila['referencia_reembolso'] as String?,
       pagoDetalle: fila['pago_detalle'] as String?,
+      recibidoEn: fecha('recibido_en'),
+      diagnosticoEn: fecha('diagnostico_en'),
     );
   }
 
@@ -129,6 +137,11 @@ class Pedido {
 
   /// Cuándo quedó el pago en custodia. Es null mientras no se pague.
   final DateTime? pagadoEn;
+
+  /// HU02: cuándo llegó al Hub y cuándo pasó a diagnóstico. Las anota el
+  /// servidor (supabase/11_rastreo_y_certificado.sql).
+  final DateTime? recibidoEn;
+  final DateTime? diagnosticoEn;
 
   /// El checklist del Hub (HU07), si ya se hizo y la consulta lo trajo.
   final Inspeccion? inspeccion;

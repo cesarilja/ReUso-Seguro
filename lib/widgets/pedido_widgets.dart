@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../formato.dart';
 import '../models/pedido.dart';
+import '../models/rastreo.dart';
 import '../tema.dart';
 
 /// Ícono de cada forma de pago (la vista decide cómo se ve; el modelo no).
@@ -58,127 +59,172 @@ class EtiquetaPedido extends StatelessWidget {
   }
 }
 
-/// Las fases del pedido, como el rastreo de una encomienda.
+/// Las fases del pedido, como el rastreo de una encomienda (HU02).
 ///
 /// Resuelve el hallazgo 4 de la heurística 1 (visibilidad del estado del
-/// sistema): el comprador ve qué ya pasó y qué viene después.
+/// sistema): el comprador ve qué ya pasó, cuándo pasó y qué viene después.
+/// Cada fase se distingue por ícono, texto y color, nunca solo por color.
 class LineaDeTiempo extends StatelessWidget {
-  const LineaDeTiempo({super.key, required this.estado});
+  const LineaDeTiempo({super.key, required this.pedido});
 
-  final EstadoPedido estado;
-
-  static const List<(EstadoPedido, String)> _fases = [
-    (EstadoPedido.pagoEnCustodia, 'Pago en custodia'),
-    (EstadoPedido.recibidoEnHub, 'El vendedor lo entrega en el Hub'),
-    (EstadoPedido.enDiagnostico, 'El inspector técnico lo revisa'),
-    (EstadoPedido.aprobado, 'Aprobado: el pago se libera al vendedor'),
-    (EstadoPedido.enCamino, 'Va en camino a tus manos'),
-  ];
-
-  int get _actual {
-    final orden = [
-      EstadoPedido.pagoEnCustodia,
-      EstadoPedido.recibidoEnHub,
-      EstadoPedido.enDiagnostico,
-      EstadoPedido.aprobado,
-      EstadoPedido.pagoLiberado,
-      EstadoPedido.enCamino,
-    ];
-    final indice = orden.indexOf(estado);
-    if (indice < 0) return -1;
-    // «Pago liberado» y «Aprobado» son la misma fase para el comprador.
-    return indice >= 4 ? indice - 1 : indice;
-  }
+  final Pedido pedido;
 
   @override
   Widget build(BuildContext context) {
-    final actual = _actual;
+    final fases = Rastreo.de(pedido).fases;
 
     return Column(
       children: [
-        for (var i = 0; i < _fases.length; i++)
-          _Fase(
-            texto: _fases[i].$2,
-            hecha: i < actual,
-            esActual: i == actual,
-            ultima: i == _fases.length - 1,
-          ),
+        for (var i = 0; i < fases.length; i++)
+          _Fase(fase: fases[i], ultima: i == fases.length - 1),
       ],
     );
   }
 }
 
 class _Fase extends StatelessWidget {
-  const _Fase({
-    required this.texto,
-    required this.hecha,
-    required this.esActual,
-    required this.ultima,
-  });
+  const _Fase({required this.fase, required this.ultima});
 
-  final String texto;
-  final bool hecha;
-  final bool esActual;
+  final FaseRastreo fase;
   final bool ultima;
 
   @override
   Widget build(BuildContext context) {
     const verde = Color(0xFF1F7A44);
-    final activa = hecha || esActual;
+    const rojo = Color(0xFFB3261E);
+    final hecha = fase.estado == EstadoFase.hecha;
+    final esActual = fase.estado == EstadoFase.actual;
+    final color = fase.negativa ? rojo : verde;
+    final fecha = fase.fecha;
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 28,
-            child: Column(
-              children: [
-                Container(
-                  width: 22,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: activa ? verde : Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: activa ? verde : ColoresApp.cielo,
-                      width: 2,
+    final IconData? icono;
+    if (!fase.alcanzada) {
+      icono = null;
+    } else if (fase.negativa) {
+      icono = Icons.close;
+    } else if (hecha || ultima) {
+      icono = Icons.check;
+    } else {
+      icono = Icons.circle;
+    }
+
+    return Semantics(
+      label: '${fase.titulo}. '
+          '${hecha ? 'Hecho' : (esActual ? 'Fase actual' : 'Pendiente')}'
+          '${fecha != null ? ', el ${formatearFecha(fecha)}' : ''}',
+      child: ExcludeSemantics(
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: 28,
+                child: Column(
+                  children: [
+                    Container(
+                      width: esActual ? 24 : 22,
+                      height: esActual ? 24 : 22,
+                      decoration: BoxDecoration(
+                        color: fase.alcanzada ? color : Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: fase.alcanzada ? color : ColoresApp.cielo,
+                          width: 2,
+                        ),
+                        boxShadow: esActual
+                            ? [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 8)]
+                            : null,
+                      ),
+                      child: icono == null
+                          ? null
+                          : Icon(
+                              icono,
+                              size: icono == Icons.circle ? 8 : 14,
+                              color: Colors.white,
+                            ),
                     ),
-                  ),
-                  child: activa
-                      ? Icon(
-                          hecha ? Icons.check : Icons.circle,
-                          size: hecha ? 14 : 8,
-                          color: Colors.white,
-                        )
-                      : null,
-                ),
-                if (!ultima)
-                  Expanded(
-                    child: Container(
-                      width: 2,
-                      color: hecha ? verde : ColoresApp.cielo,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 14, top: 1),
-              child: Text(
-                esActual ? '$texto (ahora)' : texto,
-                style: Tipos.pequeno.copyWith(
-                  fontSize: 14,
-                  color: activa ? ColoresApp.tinta : ColoresApp.pizarra,
-                  fontWeight: esActual ? FontWeight.w700 : FontWeight.w500,
+                    if (!ultima)
+                      Expanded(
+                        child: Container(
+                          width: 2,
+                          color: hecha ? color : ColoresApp.cielo,
+                        ),
+                      ),
+                  ],
                 ),
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 14, top: 1),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        esActual ? '${fase.titulo} (ahora)' : fase.titulo,
+                        style: Tipos.pequeno.copyWith(
+                          fontSize: 14,
+                          color: fase.alcanzada
+                              ? (fase.negativa ? rojo : ColoresApp.tinta)
+                              : ColoresApp.pizarra,
+                          fontWeight: esActual ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                      if (fecha != null)
+                        Text(
+                          formatearFecha(fecha),
+                          style: Tipos.pequeno.copyWith(fontSize: 12.5),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
+    );
+  }
+}
+
+/// HU02, escenario 3: dónde está el dinero del comprador, en palabras
+/// sencillas (heurística 2: lenguaje del usuario).
+class DondeEstaTuDinero extends StatelessWidget {
+  const DondeEstaTuDinero({super.key, required this.pedido});
+
+  final Pedido pedido;
+
+  @override
+  Widget build(BuildContext context) {
+    final dinero = Rastreo.de(pedido).dinero;
+    final (icono, fondo, color) = switch (dinero) {
+      DondeEstaElDinero.enCustodia => (
+          Icons.lock_outline,
+          ColoresApp.nube,
+          ColoresApp.tinta
+        ),
+      DondeEstaElDinero.liberandose || DondeEstaElDinero.liberado => (
+          Icons.check_circle_outline,
+          const Color(0xFFDFF3E6),
+          const Color(0xFF1F7A44)
+        ),
+      DondeEstaElDinero.devolviendose || DondeEstaElDinero.devuelto => (
+          Icons.undo,
+          const Color(0xFFDFF3E6),
+          const Color(0xFF1F7A44)
+        ),
+      DondeEstaElDinero.sinCobrar => (
+          Icons.info_outline,
+          ColoresApp.nube,
+          ColoresApp.tinta
+        ),
+    };
+
+    return RecuadroInfo(
+      icono: icono,
+      color: fondo,
+      colorIcono: color,
+      texto: dinero.texto,
     );
   }
 }
