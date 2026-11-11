@@ -336,5 +336,7 @@ class DatoDePrueba {
         'Monto no coincide'),
     DatoDePrueba('Pago Móvil o Zelle', 'Cualquier otra referencia',
         'Aprobado'),
+    DatoDePrueba('Cuenta para cobrar del vendedor',
+        'Teléfono terminado en 0000', 'Transferencia rechazada'),
   ];
 }

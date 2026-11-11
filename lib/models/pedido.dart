@@ -14,6 +14,8 @@ enum EstadoPedido {
   recibidoEnHub('recibido_en_hub', 'Recibido en Hub'),
   enDiagnostico('en_diagnostico', 'En diagnóstico'),
   aprobado('aprobado', 'Aprobado'),
+  // HU06: la transferencia al vendedor falló; el dinero sigue en custodia.
+  liberacionPendiente('liberacion_pendiente', 'Liberación pendiente'),
   pagoLiberado('pago_liberado', 'Pago liberado'),
   enCamino('en_camino', 'En camino'),
   rechazado('rechazado', 'Rechazado'),
@@ -53,6 +55,42 @@ enum MetodoPago {
   }
 }
 
+/// HU06: por qué la transferencia al vendedor no se pudo hacer. Cada motivo
+/// dice qué pasó y qué hacer, sin culpar a nadie (heurística 9).
+enum MotivoLiberacion {
+  sinCuenta(
+    'SIN_CUENTA',
+    'Falta tu cuenta para cobrar',
+    'Registra la cuenta donde quieres recibir el dinero. Apenas la guardes, '
+        'intentamos la transferencia otra vez.',
+  ),
+  cuentaRechazada(
+    'CUENTA_RECHAZADA',
+    'Tu banco rechazó la transferencia',
+    'Revisa los datos de tu cuenta (banco, teléfono y cédula) o registra '
+        'otra. Al guardarla, la intentamos de nuevo.',
+  ),
+  desconocido(
+    'DESCONOCIDO',
+    'La transferencia no se pudo completar',
+    'Vuelve a intentarlo en unos minutos.',
+  );
+
+  const MotivoLiberacion(this.codigo, this.titulo, this.queHacer);
+
+  final String codigo;
+  final String titulo;
+  final String queHacer;
+
+  static MotivoLiberacion? desde(String? codigo) {
+    if (codigo == null) return null;
+    return MotivoLiberacion.values.firstWhere(
+      (m) => m.codigo == codigo,
+      orElse: () => desconocido,
+    );
+  }
+}
+
 /// Un pedido: un comprador compra un solo equipo (HU12 y HU01).
 class Pedido {
   const Pedido({
@@ -77,6 +115,10 @@ class Pedido {
     this.pagoDetalle,
     this.recibidoEn,
     this.diagnosticoEn,
+    this.vendedorVioEn,
+    this.entregadoEn,
+    this.liberacionMotivo,
+    this.liberacionIntentos = 0,
   });
 
   /// Crea un pedido a partir de una fila de la tabla `pedidos`.
@@ -111,6 +153,10 @@ class Pedido {
       pagoDetalle: fila['pago_detalle'] as String?,
       recibidoEn: fecha('recibido_en'),
       diagnosticoEn: fecha('diagnostico_en'),
+      vendedorVioEn: fecha('vendedor_vio_en'),
+      entregadoEn: fecha('entregado_en'),
+      liberacionMotivo: MotivoLiberacion.desde(fila['liberacion_motivo'] as String?),
+      liberacionIntentos: (fila['liberacion_intentos'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -142,6 +188,16 @@ class Pedido {
   /// servidor (supabase/11_rastreo_y_certificado.sql).
   final DateTime? recibidoEn;
   final DateTime? diagnosticoEn;
+
+  /// HU04: cuándo vio el vendedor esta venta. Null = venta nueva.
+  final DateTime? vendedorVioEn;
+
+  /// HU04: cuándo avisó el vendedor «Ya entregué el equipo» en el Hub.
+  final DateTime? entregadoEn;
+
+  /// HU06: por qué no se pudo transferir el pago al vendedor.
+  final MotivoLiberacion? liberacionMotivo;
+  final int liberacionIntentos;
 
   /// El checklist del Hub (HU07), si ya se hizo y la consulta lo trajo.
   final Inspeccion? inspeccion;
@@ -186,6 +242,19 @@ class Pedido {
   double get montoADevolver => montoReembolsado ?? monto;
 
   bool get pagoLiberado => liberadoEn != null;
+
+  /// HU06: el equipo se aprobó pero la transferencia al vendedor falló.
+  bool get liberacionPendiente => estado == EstadoPedido.liberacionPendiente;
+
+  /// HU04: el comprador ya pagó y el vendedor tiene que llevar el equipo
+  /// al Hub (todavía no avisó que lo entregó).
+  bool get debeEntregar => estado == EstadoPedido.pagoEnCustodia && entregadoEn == null;
+
+  /// HU04: el vendedor avisó que lo entregó y el Hub todavía no lo recibe.
+  bool get esperandoAlHub => estado == EstadoPedido.pagoEnCustodia && entregadoEn != null;
+
+  /// HU04: venta pagada que el vendedor todavía no ha visto.
+  bool get esVentaNueva => estaPagado && vendedorVioEn == null;
 
   String get codigo => 'P-$numero';
 

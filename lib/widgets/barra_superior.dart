@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import '../screens/publicar_screen.dart';
 import '../services/inspeccion_service.dart';
 import '../services/sesion_service.dart';
+import '../services/vendedor_service.dart';
 import '../tema.dart';
 import 'avisos.dart';
+import 'insignia.dart';
 import 'navegacion.dart';
 import 'pegatina.dart';
 
@@ -74,11 +76,13 @@ class BarraSuperior extends StatelessWidget {
         listenable: Listenable.merge([
           SesionService.instancia,
           InspeccionService.instancia,
+          VendedorService.instancia, // HU04: insignia de ventas nuevas
         ]),
         builder: (context, _) => LayoutBuilder(
           builder: (context, limites) {
             final usuario = SesionService.instancia.usuario;
             final secciones = seccionesVisibles();
+            final ventasNuevas = VendedorService.instancia.ventasNuevas;
             final mostrarNombre = ancho >= 520 || !mostrarAcciones;
 
             // Todas las secciones van en la barra. Si no caben, la barra se
@@ -169,6 +173,7 @@ class BarraSuperior extends StatelessWidget {
                                 seccion: s,
                                 activa: s == seccion,
                                 conIcono: conIcono,
+                                insignia: s == Seccion.ventas ? ventasNuevas : 0,
                                 alTocar: () => irA(context, s),
                               ),
                           ],
@@ -184,6 +189,7 @@ class BarraSuperior extends StatelessWidget {
                       secciones: secciones,
                       actual: seccion,
                       compacto: corta,
+                      ventasNuevas: ventasNuevas,
                     ),
                     const SizedBox(width: 8),
                   ],
@@ -202,7 +208,7 @@ class BarraSuperior extends StatelessWidget {
                       alTocar: () => asegurarSesion(context),
                     )
                   else
-                    _MenuUsuario(usuario: usuario),
+                    _MenuUsuario(usuario: usuario, ventasNuevas: ventasNuevas),
                 ],
               ],
             );
@@ -220,11 +226,15 @@ class _Enlace extends StatelessWidget {
     required this.activa,
     required this.alTocar,
     this.conIcono = true,
+    this.insignia = 0,
   });
 
   final Seccion seccion;
   final bool activa;
   final VoidCallback alTocar;
+
+  /// HU04: número de ventas nuevas (solo en «Mis ventas»).
+  final int insignia;
 
   /// En pantallas medianas el enlace va sin ícono para que quepan todos.
   final bool conIcono;
@@ -267,6 +277,10 @@ class _Enlace extends StatelessWidget {
                   color: activa ? ColoresApp.tinta : ColoresApp.pizarra,
                 ),
               ),
+              if (insignia > 0) ...[
+                const SizedBox(width: 6),
+                InsigniaContador(cantidad: insignia, descripcion: 'ventas nuevas'),
+              ],
             ],
           ),
         ),
@@ -281,10 +295,12 @@ class _MenuSecciones extends StatelessWidget {
     required this.secciones,
     required this.actual,
     required this.compacto,
+    this.ventasNuevas = 0,
   });
 
   final List<Seccion> secciones;
   final Seccion? actual;
+  final int ventasNuevas;
 
   /// En teléfonos solo se ve el ícono.
   final bool compacto;
@@ -310,7 +326,12 @@ class _MenuSecciones extends StatelessWidget {
               ),
               trailing: s == actual
                   ? const Icon(Icons.check, color: ColoresApp.orquidea)
-                  : null,
+                  : (s == Seccion.ventas && ventasNuevas > 0
+                      ? InsigniaContador(
+                          cantidad: ventasNuevas,
+                          descripcion: 'ventas nuevas',
+                        )
+                      : null),
             ),
           ),
       ],
@@ -325,6 +346,10 @@ class _MenuSecciones extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.menu, color: ColoresApp.tinta),
+            if (ventasNuevas > 0) ...[
+              const SizedBox(width: 4),
+              InsigniaContador(cantidad: ventasNuevas, descripcion: 'ventas nuevas'),
+            ],
             if (!compacto) ...[
               const SizedBox(width: 4),
               const Text(
@@ -346,9 +371,10 @@ class _MenuSecciones extends StatelessWidget {
 /// Círculo con la inicial y una flecha, para que se note que es un menú
 /// (heurística 6, hallazgo del taller de UX).
 class _MenuUsuario extends StatelessWidget {
-  const _MenuUsuario({required this.usuario});
+  const _MenuUsuario({required this.usuario, this.ventasNuevas = 0});
 
   final Usuario usuario;
+  final int ventasNuevas;
 
   @override
   Widget build(BuildContext context) {
@@ -393,12 +419,15 @@ class _MenuUsuario extends StatelessWidget {
             title: Text('Mis compras'),
           ),
         ),
-        const PopupMenuItem<String>(
+        PopupMenuItem<String>(
           value: 'ventas',
           child: ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.sell_outlined),
-            title: Text('Mis ventas'),
+            leading: const Icon(Icons.sell_outlined),
+            title: const Text('Mis ventas'),
+            trailing: ventasNuevas > 0
+                ? InsigniaContador(cantidad: ventasNuevas, descripcion: 'ventas nuevas')
+                : null,
           ),
         ),
         const PopupMenuDivider(),

@@ -67,7 +67,10 @@ class Rastreo {
         EstadoPedido.pagoEnCustodia => 0,
         EstadoPedido.recibidoEnHub => 1,
         EstadoPedido.enDiagnostico => 2,
-        EstadoPedido.aprobado || EstadoPedido.rechazado => 3,
+        EstadoPedido.aprobado ||
+        EstadoPedido.liberacionPendiente ||
+        EstadoPedido.rechazado =>
+          3,
         EstadoPedido.pagoLiberado ||
         EstadoPedido.enCamino ||
         EstadoPedido.reembolsado =>
@@ -137,7 +140,9 @@ class Rastreo {
         EstadoPedido.recibidoEnHub ||
         EstadoPedido.enDiagnostico =>
           DondeEstaElDinero.enCustodia,
-        EstadoPedido.aprobado => DondeEstaElDinero.liberandose,
+        EstadoPedido.aprobado ||
+        EstadoPedido.liberacionPendiente =>
+          DondeEstaElDinero.liberandose,
         EstadoPedido.pagoLiberado ||
         EstadoPedido.enCamino =>
           DondeEstaElDinero.liberado,

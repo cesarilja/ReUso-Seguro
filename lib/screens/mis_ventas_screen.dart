@@ -3,16 +3,21 @@ import 'package:flutter/material.dart';
 import '../formato.dart';
 import '../models/equipo.dart';
 import '../models/pedido.dart';
+import '../models/venta.dart';
 import '../services/catalogo_service.dart';
+import '../services/pasarela.dart';
 import '../services/pedido_service.dart';
 import '../services/sesion_service.dart';
+import '../services/vendedor_service.dart';
 import '../tema.dart';
+import '../widgets/avisos.dart';
 import '../widgets/dictamen_widgets.dart';
 import '../widgets/imagen_equipo.dart';
 import '../widgets/navegacion.dart';
 import '../widgets/pagina_base.dart';
 import '../widgets/pedido_widgets.dart';
 import '../widgets/pegatina.dart';
+import '../widgets/venta_widgets.dart';
 import 'certificado_screen.dart';
 import 'detalle_equipo_screen.dart';
 
@@ -31,6 +36,10 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
   late Future<List<Pedido>> _ventas = PedidoService.instancia.misVentas();
   late Future<List<Equipo>> _publicaciones =
       const CatalogoService().misPublicaciones();
+  late Future<CuentaCobro?> _cuenta = VendedorService.instancia.miCuenta();
+
+  /// Ventas con una acción en curso (para no tocar dos veces).
+  final Set<String> _ocupadas = {};
 
   @override
   void initState() {
@@ -38,6 +47,10 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
     PedidoService.instancia.addListener(_recargar);
     SesionService.instancia.addListener(_recargar);
     CatalogoService.cambios.addListener(_recargar);
+    // HU04: al abrir «Mis ventas», las ventas nuevas quedan vistas (y si
+    // llega otra con la página abierta, también).
+    VendedorService.instancia.addListener(_marcarVistas);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _marcarVistas());
   }
 
   @override
@@ -45,7 +58,14 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
     PedidoService.instancia.removeListener(_recargar);
     SesionService.instancia.removeListener(_recargar);
     CatalogoService.cambios.removeListener(_recargar);
+    VendedorService.instancia.removeListener(_marcarVistas);
     super.dispose();
+  }
+
+  void _marcarVistas() {
+    if (mounted && VendedorService.instancia.ventasNuevas > 0) {
+      VendedorService.instancia.marcarVentasVistas();
+    }
   }
 
   void _recargar() {
@@ -53,7 +73,87 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
     setState(() {
       _ventas = PedidoService.instancia.misVentas();
       _publicaciones = const CatalogoService().misPublicaciones();
+      _cuenta = VendedorService.instancia.miCuenta();
     });
+  }
+
+  /// HU04, escenario 3: «Ya entregué el equipo», con confirmación
+  /// (heurística 5: prevención de errores).
+  Future<void> _entregar(Pedido venta) async {
+    final seguro = await showDialog<bool>(
+      context: context,
+      builder: (contexto) => AlertDialog(
+        title: const Text('¿Ya entregaste el equipo en el Hub?'),
+        content: Text(
+          'Confírmalo solo si ya dejaste «${venta.equipo.titulo}» en el Hub '
+          'con el código ${venta.codigo}. El inspector lo verá en «Por recibir».',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(contexto).pop(false),
+            child: const Text('Todavía no'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(contexto).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: ColoresApp.tinta),
+            child: const Text('Sí, ya lo entregué'),
+          ),
+        ],
+      ),
+    );
+    if (seguro != true || !mounted) return;
+    await _accion(venta, () => VendedorService.instancia.marcarEntregado(venta),
+        'Listo: le avisamos al Hub que entregaste el pedido ${venta.codigo}.');
+  }
+
+  /// HU06, escenario 2: reintentar la transferencia.
+  Future<void> _reintentar(Pedido venta) async {
+    await _accion(venta, () async {
+      final actualizada = await VendedorService.instancia.reintentarLiberacion(venta);
+      if (actualizada.liberacionPendiente) {
+        throw ErrorDePedido(
+          'La transferencia volvió a fallar: '
+          '${(actualizada.liberacionMotivo ?? MotivoLiberacion.desconocido).titulo.toLowerCase()}. '
+          'Tu dinero sigue en custodia.',
+        );
+      }
+      return actualizada;
+    }, 'Te liberamos el pago de ${venta.codigo}.');
+  }
+
+  Future<void> _accion(
+    Pedido venta,
+    Future<Pedido> Function() hacer,
+    String mensajeExito,
+  ) async {
+    if (_ocupadas.contains(venta.id)) return;
+    setState(() => _ocupadas.add(venta.id));
+    try {
+      await hacer();
+      if (mounted) mostrarAviso(context, mensajeExito);
+    } on ErrorDePedido catch (error) {
+      if (mounted) mostrarAviso(context, error.mensaje);
+    } finally {
+      if (mounted) setState(() => _ocupadas.remove(venta.id));
+      _recargar();
+    }
+  }
+
+  /// HU06: registrar o cambiar la cuenta donde cobra el vendedor.
+  Future<void> _editarCuenta(CuentaCobro? actual) async {
+    final liberados = await showDialog<int>(
+      context: context,
+      builder: (_) => _DialogoCuentaCobro(actual: actual),
+    );
+    if (liberados == null || !mounted) return;
+    mostrarAviso(
+      context,
+      liberados > 0
+          ? 'Guardamos tu cuenta y te liberamos $liberados '
+              '${liberados == 1 ? 'pago pendiente' : 'pagos pendientes'}.'
+          : 'Guardamos tu cuenta para cobrar.',
+    );
+    _recargar();
   }
 
   @override
@@ -80,6 +180,20 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
           Text(
             'Aquí ves los equipos que te compraron y cuándo recibes el dinero.',
             style: Tipos.cuerpo,
+          ),
+          const SizedBox(height: 20),
+          // HU06: dónde cobra el vendedor.
+          FutureBuilder<CuentaCobro?>(
+            future: _cuenta,
+            builder: (context, resultado) {
+              if (resultado.connectionState != ConnectionState.done) {
+                return const SizedBox(height: 8);
+              }
+              return TarjetaCuentaCobro(
+                cuenta: resultado.data,
+                alEditar: () => _editarCuenta(resultado.data),
+              );
+            },
           ),
           const SizedBox(height: 28),
           FutureBuilder<List<Pedido>>(
@@ -145,7 +259,16 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
                   ),
                   const SizedBox(height: 24),
                   for (final venta in ventas) ...[
-                    _TarjetaVenta(venta: venta),
+                    _TarjetaVenta(
+                      venta: venta,
+                      ocupada: _ocupadas.contains(venta.id),
+                      alEntregar: () => _entregar(venta),
+                      alReintentar: () => _reintentar(venta),
+                      alRegistrarCuenta: () async {
+                        final cuenta = await VendedorService.instancia.miCuenta();
+                        if (mounted) await _editarCuenta(cuenta);
+                      },
+                    ),
                     const SizedBox(height: 18),
                   ],
                 ],
@@ -329,9 +452,19 @@ class _Total extends StatelessWidget {
 }
 
 class _TarjetaVenta extends StatelessWidget {
-  const _TarjetaVenta({required this.venta});
+  const _TarjetaVenta({
+    required this.venta,
+    required this.ocupada,
+    required this.alEntregar,
+    required this.alReintentar,
+    required this.alRegistrarCuenta,
+  });
 
   final Pedido venta;
+  final bool ocupada;
+  final VoidCallback alEntregar;
+  final VoidCallback alReintentar;
+  final VoidCallback alRegistrarCuenta;
 
   @override
   Widget build(BuildContext context) {
@@ -415,6 +548,23 @@ class _TarjetaVenta extends StatelessWidget {
               ),
               const SizedBox(height: 10),
             ],
+            // HU04: qué hacer con el equipo; HU06: si el cobro falló.
+            if (venta.debeEntregar)
+              InstruccionesEntrega(
+                venta: venta,
+                ocupado: ocupada,
+                alEntregar: alEntregar,
+              )
+            else if (venta.esperandoAlHub)
+              EsperandoAlHub(venta: venta)
+            else if (venta.liberacionPendiente)
+              AvisoLiberacionPendiente(
+                venta: venta,
+                ocupado: ocupada,
+                alReintentar: alReintentar,
+                alRegistrarCuenta: alRegistrarCuenta,
+              )
+            else
             RecuadroInfo(
               icono: venta.pagoLiberado
                   ? Icons.check_circle_outline
@@ -441,6 +591,8 @@ class _TarjetaVenta extends StatelessWidget {
             'revisando.';
       case EstadoPedido.aprobado:
         return 'Tu equipo fue aprobado. El pago se está liberando.';
+      case EstadoPedido.liberacionPendiente:
+        return 'Tu equipo fue aprobado, pero la transferencia está pendiente.';
       case EstadoPedido.pagoLiberado:
       case EstadoPedido.enCamino:
         return liberadoEn == null
@@ -457,5 +609,169 @@ class _TarjetaVenta extends StatelessWidget {
       case EstadoPedido.cancelado:
         return '';
     }
+  }
+}
+
+/// HU06: formulario de la cuenta para cobrar (Pago Móvil, SIMULADO).
+/// Al guardarla, el servidor reintenta solo las liberaciones pendientes.
+class _DialogoCuentaCobro extends StatefulWidget {
+  const _DialogoCuentaCobro({required this.actual});
+
+  final CuentaCobro? actual;
+
+  @override
+  State<_DialogoCuentaCobro> createState() => _DialogoCuentaCobroState();
+}
+
+class _DialogoCuentaCobroState extends State<_DialogoCuentaCobro> {
+  final _clave = GlobalKey<FormState>();
+  late String? _banco = widget.actual?.banco;
+  late final _telefono = TextEditingController(text: widget.actual?.telefono);
+  late final _cedula = TextEditingController(text: widget.actual?.cedula);
+  late final _titular = TextEditingController(text: widget.actual?.titular);
+  bool _guardando = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _telefono.dispose();
+    _cedula.dispose();
+    _titular.dispose();
+    super.dispose();
+  }
+
+  Future<void> _guardar() async {
+    if (_guardando || !(_clave.currentState?.validate() ?? false)) return;
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+    try {
+      final liberados = await VendedorService.instancia.guardarCuenta(
+        banco: _banco!,
+        telefono: _telefono.text,
+        cedula: _cedula.text,
+        titular: _titular.text,
+      );
+      if (mounted) Navigator.of(context).pop(liberados);
+    } on ErrorDePedido catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _guardando = false;
+        _error = error.mensaje;
+      });
+    }
+  }
+
+  InputDecoration _decoracion(String etiqueta, IconData icono, {String? pista}) =>
+      InputDecoration(
+        labelText: etiqueta,
+        hintText: pista,
+        prefixIcon: Icon(icono),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final bancos = [for (final (codigo, nombre) in bancosVenezuela) '$codigo · $nombre'];
+    if (_banco != null && !bancos.contains(_banco)) bancos.insert(0, _banco!);
+
+    return AlertDialog(
+      title: const Text('Tu cuenta para cobrar'),
+      content: SizedBox(
+        width: 440,
+        child: Form(
+          key: _clave,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Aquí te transferimos el dinero de tus ventas por Pago Móvil '
+                  '(simulado: no se mueve dinero real).',
+                  style: Tipos.pequeno.copyWith(fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: _banco,
+                  isExpanded: true,
+                  decoration: _decoracion('Banco', Icons.account_balance_outlined),
+                  items: [
+                    for (final banco in bancos)
+                      DropdownMenuItem(value: banco, child: Text(banco)),
+                  ],
+                  onChanged: (valor) => setState(() => _banco = valor),
+                  validator: (valor) => valor == null ? 'Elige tu banco.' : null,
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _telefono,
+                  keyboardType: TextInputType.phone,
+                  decoration: _decoracion('Teléfono del Pago Móvil', Icons.phone_iphone,
+                      pista: '0414 123 4567'),
+                  validator: (valor) => validarTelefono(valor ?? ''),
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _cedula,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: _decoracion('Cédula del titular', Icons.badge_outlined,
+                      pista: 'V12345678'),
+                  validator: (valor) => validarCedula(valor ?? ''),
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _titular,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: _decoracion('Nombre del titular', Icons.person_outline,
+                      pista: 'María Pérez'),
+                  validator: (valor) => (valor ?? '').trim().length < 5 ||
+                          !(valor ?? '').trim().contains(' ')
+                      ? 'Escribe el nombre y el apellido del titular.'
+                      : null,
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(Icons.science_outlined, size: 16, color: Color(0xFF6B4500)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Modo de prueba: un teléfono terminado en 0000 hace que el '
+                        'banco rechace la transferencia.',
+                        style: Tipos.pequeno.copyWith(fontSize: 12.5),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  RecuadroInfo(
+                    icono: Icons.error_outline,
+                    color: const Color(0xFFFBE9E8),
+                    colorIcono: const Color(0xFFB3261E),
+                    colorTexto: const Color(0xFFB3261E),
+                    texto: _error!,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _guardando ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _guardando ? null : _guardar,
+          style: FilledButton.styleFrom(backgroundColor: ColoresApp.tinta),
+          child: Text(_guardando ? 'Guardando…' : 'Guardar cuenta'),
+        ),
+      ],
+    );
   }
 }

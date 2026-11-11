@@ -26,6 +26,8 @@ class EtiquetaPedido extends StatelessWidget {
     final (fondo, icono, colorIcono) = switch (estado) {
       EstadoPedido.pendienteDePago => (Colors.white, Icons.schedule, ColoresApp.tinta),
       EstadoPedido.cancelado => (ColoresApp.nube, Icons.block, ColoresApp.pizarra),
+      EstadoPedido.liberacionPendiente =>
+        (const Color(0xFFFFF4D6), Icons.sync_problem, const Color(0xFF6B4500)),
       EstadoPedido.rechazado ||
       EstadoPedido.reembolsado =>
         (const Color(0xFFFBE9E8), Icons.undo, const Color(0xFFB3261E)),

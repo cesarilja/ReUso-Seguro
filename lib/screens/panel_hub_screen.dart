@@ -149,9 +149,12 @@ class _PanelHubScreenState extends State<PanelHubScreen> {
               }
 
               final todos = resultado.data ?? const <PedidoHub>[];
+              // HU04: primero los que el vendedor ya avisó que entregó.
               final porRecibir = todos
                   .where((i) => i.pedido.estado == EstadoPedido.pagoEnCustodia)
-                  .toList();
+                  .toList()
+                ..sort((a, b) => (b.pedido.entregadoEn != null ? 1 : 0)
+                    .compareTo(a.pedido.entregadoEn != null ? 1 : 0));
               final porInspeccionar = todos
                   .where((i) =>
                       i.pedido.estado == EstadoPedido.recibidoEnHub ||
@@ -374,6 +377,26 @@ class _TarjetaHub extends StatelessWidget {
           ),
           if (pagadoEn != null)
             Text('Pagado el ${formatearFecha(pagadoEn)}', style: Tipos.pequeno),
+          // HU04: el vendedor avisó «Ya entregué el equipo».
+          if (pedido.esperandoAlHub)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  const Icon(Icons.inventory_2_outlined, size: 16, color: Color(0xFF1F7A44)),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'El vendedor lo entregó el ${formatearFecha(pedido.entregadoEn!)}',
+                      style: Tipos.pequeno.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1F7A44),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (pedido.dictamen != null) ...[
             const SizedBox(height: 8),
             TarjetaDictamen(dictamen: pedido.dictamen!),

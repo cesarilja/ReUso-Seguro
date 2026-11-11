@@ -4,7 +4,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'configuracion.dart';
 import 'screens/catalogo_screen.dart';
 import 'services/tiempo_real_service.dart';
+import 'services/vendedor_service.dart';
 import 'tema.dart';
+import 'widgets/avisos.dart';
 
 Future<void> main() async {
   // Hace falta antes de usar Supabase, que se conecta al arrancar.
@@ -18,6 +20,10 @@ Future<void> main() async {
   // Cambios en tiempo real: la app se actualiza sola, sin recargar.
   TiempoRealService.instancia.iniciar();
 
+  // HU04: avisos al vendedor en cualquier pantalla e insignia de ventas.
+  VendedorService.instancia.iniciar();
+  VendedorService.instancia.avisos.listen(mostrarAvisoGlobal);
+
   runApp(const ReUsoSeguroApp());
 }
 
@@ -30,6 +36,7 @@ class ReUsoSeguroApp extends StatelessWidget {
     return MaterialApp(
       title: 'ReUso Seguro',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: avisosGlobales,
       theme: temaApp(),
       // El catálogo es público: se ve sin iniciar sesión.
       home: const CatalogoScreen(),
