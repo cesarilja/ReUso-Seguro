@@ -118,6 +118,16 @@ flutter run -d chrome
   - **«Guardar en PDF»** descarga el certificado como `Certificado_P-1001_2026-11-05.pdf` (código del pedido y fecha del dictamen), con las fotos de evidencia;
   - solo lo pueden ver el comprador, el vendedor y los inspectores (reglas RLS del servidor).
   - Pruebas: `flutter test` (`test/rastreo_test.dart`, `test/certificado_test.dart` y las pruebas de widget en `test/widget/`) y `supabase/pruebas/11_verificar_rastreo_certificado.sql` (todas las filas deben decir «OK»).
+- **Confirmación de fondos para el vendedor** (HU04 · Sprint 3: `lib/services/vendedor_service.dart`, `lib/widgets/venta_widgets.dart`, `supabase/12_vendedor_y_liberacion.sql`):
+  - cuando le compran, el vendedor ve en cualquier pantalla el aviso «Te compraron [equipo]. El pago está en custodia» y «Mis ventas» muestra en la barra un número rojo con las ventas nuevas (se borra al abrirla);
+  - cada venta pagada muestra los pasos para llevar el equipo al Hub: dirección, horario y el código del pedido (con botón de copiar);
+  - con «Ya entregué el equipo» (y su confirmación) la venta pasa a «Esperando que el Hub lo reciba» y el inspector lo ve marcado en «Por recibir». Solo el vendedor de ese pedido puede hacerlo, y solo si el pago ya está en custodia.
+- **La transferencia al vendedor puede fallar** (HU06, escenario pendiente · Sprint 3, SIMULADO):
+  - el vendedor registra en «Mis ventas» su **cuenta para cobrar** (Pago Móvil);
+  - si el equipo se aprueba y no hay cuenta, o el banco rechaza la transferencia, la venta queda en **«Liberación pendiente»** con el motivo y qué hacer, y el dinero **sigue en custodia**;
+  - al registrar o corregir la cuenta, el servidor **reintenta solo**; también hay un botón «Reintentar el cobro». Cuando funciona, la venta pasa a «Pago liberado» y llega el aviso;
+  - dato de prueba: una cuenta con teléfono terminado en **0000** hace que el banco rechace la transferencia.
+  - Pruebas: `flutter test` (`test/vendedor_test.dart` y `test/widget/venta_test.dart`) y `supabase/pruebas/12_verificar_vendedor_y_liberacion.sql` (todas las filas deben decir «OK»).
 - **Todo en tiempo real** (`lib/services/tiempo_real_service.dart`, `supabase/08_tiempo_real.sql`): con Supabase Realtime, el catálogo, el detalle de un equipo, Mis compras, Mis ventas y el Panel del Hub se actualizan solos cuando otra persona compra, publica, guarda un checklist o emite un dictamen. No hay que recargar la página. Cada persona solo recibe los cambios que tiene permiso de ver.
 - **Navegación y nuevas páginas** (`lib/widgets/navegacion.dart`, `lib/widgets/barra_superior.dart`):
   - la barra de arriba muestra las secciones: **Inicio**, **Cómo funciona**, **Mis compras**, **Mis ventas** y (solo inspectores) **Panel del Hub**. La sección actual queda subrayada en orquídea y en negrita (heurística 1: el usuario sabe dónde está);

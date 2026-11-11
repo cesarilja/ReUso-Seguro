@@ -128,6 +128,8 @@ class InspeccionService extends ChangeNotifier {
     'aprobado',
     'rechazado',
     'pago_liberado',
+    // HU06: aprobado, pero la transferencia al vendedor está pendiente.
+    'liberacion_pendiente',
     // HU13: un rechazado pasa solo a «reembolsado»; no debe desaparecer.
     'reembolsado',
   ];
