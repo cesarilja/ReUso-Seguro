@@ -32,7 +32,7 @@ flutter run -d chrome
 - Al iniciar sesión, si el correo o la contraseña no coinciden, el mensaje no dice cuál de los dos falló. Es a propósito: así nadie puede averiguar qué correos tienen cuenta (buena práctica de seguridad de OWASP).
 - «Comprar» crea un pedido en «Pendiente de pago» y abre la pantalla de pago. El pago protegido es la HU01 (Sprint 2).
 
-## Sprint 2 (en curso)
+## Sprint 2 (15/10 al 29/10/2026)
 
 | Historia | Puntos | Estado |
 |---|---|---|
@@ -101,6 +101,24 @@ flutter run -d chrome
   - **Mis ventas** (menú de la cuenta) muestra cada venta con el desglose: precio, comisión y lo que recibe; arriba, lo ya recibido y lo que sigue en custodia;
   - el vendedor ve en cada venta qué sigue (llevar el equipo al Hub, en revisión, pago liberado) y el dictamen del inspector;
   - el navegador no puede liberar pagos: la función no tiene permisos para la app. **No se mueve dinero real.**
+
+## Sprint 3 (03/11 al 17/11/2026)
+
+| Historia | Puntos | Estado | Entró a main |
+|---|---|---|---|
+| HU13. Reembolso por equipo rechazado | 3 | Hecha | 09/11 (commit 57a6935) |
+| HU02. Rastreo del estado de inspección | 3 | Hecha | 10/11 (PR #5) |
+| HU03. Certificado técnico | 3 | Hecha | 10/11 (PR #5) |
+| HU04. Confirmación de fondos antes del envío | 3 | Hecha | 10/11 (PR #6) |
+| HU06b. La transferencia al vendedor falla | 2 | Hecha | 10/11 (PR #6) |
+| HU09. Bóveda escrow | 8 | Hecha | 11/11 (PR #7) |
+| HU05. Respaldo técnico ante reclamos | 5 | Hecha | 11/11 (PR #7) |
+| HU10. Sincronización en tiempo real | 3 | Hecha | 11/11 (PR #7) |
+
+Con este sprint queda terminado todo el Product Backlog (59 puntos). El Sprint 4 es de pruebas y ajustes.
+
+**Scripts de Supabase:** se corren en orden en el SQL Editor (`supabase/01_…` a `supabase/14_…`). Los de `supabase/pruebas/` verifican cada historia, lo deshacen todo al final y todas sus filas deben decir «OK».
+
 - **Reembolso por equipo rechazado** (HU13 · Sprint 3: `supabase/09_reembolso.sql`, `lib/widgets/pedido_widgets.dart`):
   - cuando el inspector rechaza el equipo, un disparador en el servidor pasa el pedido a «Reembolsado» y le devuelve al comprador el 100 % de lo que pagó, sin comisión;
   - en **Mis compras** el comprador ve el comprobante del reembolso: número (RE-…), monto, comisión $0,00, a dónde se devolvió y la fecha;
@@ -152,6 +170,9 @@ flutter run -d chrome
   - el administrador tiene el **«Monitor de avisos»**: cada cambio con su hora y si el comprador y el vendedor ya lo vieron (se actualiza solo);
   - si se cae la conexión en vivo, bajo la barra aparece **«Sin conexión en vivo, reintentando…»**; la app se reconecta sola y el aviso desaparece.
   - Pruebas: `flutter test` (`test/reclamo_test.dart`, `test/aviso_test.dart` y `test/widget/reclamo_avisos_test.dart`) y `supabase/pruebas/14_verificar_reclamos_y_avisos.sql` (todas las filas deben decir «OK»).
+
+### Lo que ya venía del Sprint 2 (navegación, tiempo real y usabilidad)
+
 - **Todo en tiempo real** (`lib/services/tiempo_real_service.dart`, `supabase/08_tiempo_real.sql`): con Supabase Realtime, el catálogo, el detalle de un equipo, Mis compras, Mis ventas y el Panel del Hub se actualizan solos cuando otra persona compra, publica, guarda un checklist o emite un dictamen. No hay que recargar la página. Cada persona solo recibe los cambios que tiene permiso de ver.
 - **Navegación y nuevas páginas** (`lib/widgets/navegacion.dart`, `lib/widgets/barra_superior.dart`):
   - la barra de arriba muestra las secciones: **Inicio**, **Cómo funciona**, **Mis compras**, **Mis ventas** y (solo inspectores) **Panel del Hub**. La sección actual queda subrayada en orquídea y en negrita (heurística 1: el usuario sabe dónde está);
@@ -178,14 +199,14 @@ Arquitectura en **capas cerradas** sobre un modelo cliente-servidor, con Supabas
 | Presentación | `lib/screens`, `lib/widgets` | «boundary» |
 | Lógica de la aplicación | `lib/services` | «control» |
 | Modelos de datos | `lib/models` | «entity» |
-| Datos | Supabase (Auth; PostgreSQL y Storage en los próximos sprints) | — |
+| Datos | Supabase: Auth, PostgreSQL (con RLS y funciones `security definer`), Storage y Realtime | — |
 
 | Patrón de diseño | Dónde está |
 |---|---|
-| Repository | `CatalogoService`, `PublicacionService`, `PedidoService`, `InspeccionService` y `SesionService`: las pantallas no saben de dónde vienen los datos |
-| Singleton | `SesionService.instancia` y `PedidoService.instancia` |
-| Observer | `SesionService` avisa cuando alguien entra o sale y la barra superior se actualiza sola; `TiempoRealService` escucha los cambios de la base de datos y avisa a `CatalogoService`, `PedidoService` e `InspeccionService`, cuyas pantallas se recargan solas |
-| Facade | `SesionService` esconde el cliente de Supabase y traduce sus errores al español |
+| Repository | `CatalogoService`, `PublicacionService`, `PedidoService`, `InspeccionService`, `VendedorService`, `AdministracionService`, `AvisosService` y `SesionService`: las pantallas no saben de dónde vienen los datos |
+| Singleton | `SesionService`, `PedidoService`, `InspeccionService`, `VendedorService`, `AdministracionService`, `AvisosService` y `TiempoRealService` (cada uno con su `.instancia`) |
+| Observer | `SesionService` avisa cuando alguien entra o sale y la barra superior se actualiza sola; `TiempoRealService` escucha los cambios de la base de datos y avisa a los servicios, cuyas pantallas se recargan solas; también avisa si se pierde la conexión en vivo (HU10) |
+| Facade | `SesionService` esconde el cliente de Supabase y traduce sus errores al español; la navegación entre secciones pasa por `irA` (`lib/widgets/navegacion.dart`) |
 
 ## Diferencias con el documento de arquitectura (y por qué)
 
