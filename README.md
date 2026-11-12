@@ -128,6 +128,30 @@ flutter run -d chrome
   - al registrar o corregir la cuenta, el servidor **reintenta solo**; también hay un botón «Reintentar el cobro». Cuando funciona, la venta pasa a «Pago liberado» y llega el aviso;
   - dato de prueba: una cuenta con teléfono terminado en **0000** hace que el banco rechace la transferencia.
   - Pruebas: `flutter test` (`test/vendedor_test.dart` y `test/widget/venta_test.dart`) y `supabase/pruebas/12_verificar_vendedor_y_liberacion.sql` (todas las filas deben decir «OK»).
+- **Bóveda escrow para el administrador** (HU09 · Sprint 3: `lib/screens/boveda_screen.dart`, `lib/services/administracion_service.dart`, `lib/models/boveda.dart`, `supabase/13_boveda_escrow.sql`):
+  - nuevo rol de **administrador**: solo él ve la sección «Bóveda» en la barra y en el menú de la cuenta;
+  - cada movimiento de dinero (entra a custodia, se libera al vendedor, comisión, reembolso) **se anota solo** en el servidor con un disparador;
+  - arriba se ve siempre el estado del cuadre: **«Bóveda cuadrada»** (verde, con ícono y la hora de la última revisión) o **«Descuadre en la bóveda»** (rojo, con los pedidos afectados, la diferencia en dinero y qué hacer). Cada descuadre **queda registrado con su fecha**;
+  - 4 totales grandes (en custodia, liberado, reembolsado y comisiones), las **liberaciones pendientes** con su motivo (HU06) y los pedidos por estado;
+  - el cuadre lo hace el servidor (`revisar_boveda`): la app solo lo muestra. Se revisa al abrir la bóveda, con «Revisar ahora» y solo cuando cambia un pedido.
+  - Para dar acceso de administrador a una cuenta (en Supabase → SQL Editor, cambiando el correo):
+    ```sql
+    insert into public.administradores (usuario_id)
+    select id from auth.users where email = 'correo@ejemplo.com'
+    on conflict do nothing;
+    ```
+  - Pruebas: `flutter test` (`test/boveda_test.dart` y `test/widget/boveda_test.dart`) y `supabase/pruebas/13_verificar_boveda.sql` (provoca un descuadre a propósito; todas las filas deben decir «OK»).
+- **Respaldo técnico ante reclamos** (HU05 · Sprint 3: `lib/widgets/reclamo_widgets.dart`, `lib/models/reclamo.dart`, `supabase/14_reclamos_y_avisos.sql`):
+  - para **registrar la llegada** de un equipo al Hub, el inspector tiene que subir **de 2 a 6 fotos** de cómo llegó (y una nota opcional). Esas fotos **no se pueden cambiar ni borrar**: el servidor lo impide;
+  - el vendedor ve en «Mis ventas» las fotos de recepción con su fecha: es su respaldo imparcial;
+  - el comprador confirma **«Ya recibí mi equipo»** y desde ahí tiene **3 días** para abrir un reclamo («Tengo un problema con el equipo»). El reclamo queda junto a las fotos de recepción y el checklist del Hub, para compararlos;
+  - fuera de plazo no se puede reclamar y la app explica hasta cuándo era.
+- **Monitor de avisos e indicador de conexión** (HU10 · Sprint 3: `lib/services/avisos_service.dart`, `lib/screens/monitor_avisos_screen.dart`, `lib/widgets/indicador_conexion.dart`):
+  - cada cambio de estado de un pedido crea en el servidor un **aviso** para el comprador y otro para el vendedor, que se muestran en cualquier pantalla;
+  - quien no estaba conectado ve al entrar «Mientras no estabas: …» y sus avisos quedan marcados como vistos;
+  - el administrador tiene el **«Monitor de avisos»**: cada cambio con su hora y si el comprador y el vendedor ya lo vieron (se actualiza solo);
+  - si se cae la conexión en vivo, bajo la barra aparece **«Sin conexión en vivo, reintentando…»**; la app se reconecta sola y el aviso desaparece.
+  - Pruebas: `flutter test` (`test/reclamo_test.dart`, `test/aviso_test.dart` y `test/widget/reclamo_avisos_test.dart`) y `supabase/pruebas/14_verificar_reclamos_y_avisos.sql` (todas las filas deben decir «OK»).
 - **Todo en tiempo real** (`lib/services/tiempo_real_service.dart`, `supabase/08_tiempo_real.sql`): con Supabase Realtime, el catálogo, el detalle de un equipo, Mis compras, Mis ventas y el Panel del Hub se actualizan solos cuando otra persona compra, publica, guarda un checklist o emite un dictamen. No hay que recargar la página. Cada persona solo recibe los cambios que tiene permiso de ver.
 - **Navegación y nuevas páginas** (`lib/widgets/navegacion.dart`, `lib/widgets/barra_superior.dart`):
   - la barra de arriba muestra las secciones: **Inicio**, **Cómo funciona**, **Mis compras**, **Mis ventas** y (solo inspectores) **Panel del Hub**. La sección actual queda subrayada en orquídea y en negrita (heurística 1: el usuario sabe dónde está);
@@ -168,3 +192,16 @@ Arquitectura en **capas cerradas** sobre un modelo cliente-servidor, con Supabas
 - **El catálogo ya sale de Supabase**: la tabla `equipos` (PostgreSQL) guarda los datos y el almacén `equipos` (Storage) guarda las fotos; la tabla solo guarda la ruta de cada foto. El script está en `supabase/01_catalogo.sql`. Los 8 equipos de muestra tienen `es_demo = true` y se borran con `delete from public.equipos where es_demo;` cuando haya equipos reales (HU11). Gracias al patrón Repository, el cambio solo tocó `CatalogoService`.
 - **Seguridad del catálogo (RLS)**: cualquiera puede ver los equipos; cada vendedor solo puede publicar a su nombre y subir fotos a su propia carpeta. Nadie puede cambiar el estado «reservado» desde el navegador.
 - **Los pedidos ya están en Supabase** (tabla `pedidos`). El cambio de estado del pago lo hace el servidor con funciones de PostgreSQL (`security definer`) en lugar de Edge Functions: cumplen la misma regla (el navegador nunca cambia el estado) y son más simples para el MVP.
+
+## 🌐 Página publicada (GitHub Pages)
+
+La app está publicada en internet y se abre desde cualquier computadora o teléfono, sin instalar nada:
+
+**https://cesarilja.github.io/ReUso-Seguro/**
+
+- Se publica **sola** con `.github/workflows/publicar_web.yml`: cada vez que se une algo a `main`, GitHub revisa el código (`flutter analyze`), corre las pruebas (`flutter test`), compila la app y la publica. Si una prueba falla, no se publica y la página sigue con la versión anterior.
+- El avance se ve en la pestaña **Actions** del repositorio (tarda unos 5 minutos).
+- Usa la misma base de datos de Supabase que la app en VS Code, así que todo funciona **en tiempo real entre computadoras**: si el comprador paga en una, el inspector lo ve aparecer en otra sin recargar.
+- Configuración que se hace una sola vez:
+  1. GitHub → **Settings → Pages → Build and deployment → Source: «GitHub Actions»**.
+  2. Supabase → **Authentication → URL Configuration**: en **Site URL** y en **Redirect URLs** poner `https://cesarilja.github.io/ReUso-Seguro/` (para que los correos de confirmación de cuenta lleven a la página).

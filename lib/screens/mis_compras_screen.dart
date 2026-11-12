@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../formato.dart';
 import '../models/pedido.dart';
 import '../models/rastreo.dart';
+import '../models/reclamo.dart';
 import '../services/pedido_service.dart';
 import '../services/sesion_service.dart';
 import '../tema.dart';
@@ -13,6 +14,7 @@ import '../widgets/navegacion.dart';
 import '../widgets/pagina_base.dart';
 import '../widgets/pedido_widgets.dart';
 import '../widgets/pegatina.dart';
+import '../widgets/reclamo_widgets.dart';
 import 'certificado_screen.dart';
 import 'pago_screen.dart';
 
@@ -29,10 +31,6 @@ class MisComprasScreen extends StatefulWidget {
 
 class _MisComprasScreenState extends State<MisComprasScreen> {
   late Future<List<Pedido>> _pedidos = _cargar();
-
-  /// Estado de cada pedido en la última carga, para avisar cuando cambia
-  /// de fase en vivo (HU02, escenario 2).
-  final Map<String, EstadoPedido> _estadosAnteriores = {};
 
   @override
   void initState() {
@@ -54,23 +52,9 @@ class _MisComprasScreenState extends State<MisComprasScreen> {
     setState(() => _pedidos = _cargar());
   }
 
-  /// Carga los pedidos y, si alguno avanzó de fase desde la última vez,
-  /// lo avisa: «Tu equipo pasó a: En diagnóstico».
-  Future<List<Pedido>> _cargar() async {
-    final pedidos = await PedidoService.instancia.misPedidos();
-    final primeraCarga = _estadosAnteriores.isEmpty;
-    final avisos = <String>[];
-    for (final pedido in pedidos) {
-      final antes = _estadosAnteriores[pedido.id];
-      if (!primeraCarga && antes != null && antes != pedido.estado) {
-        final aviso = Rastreo.avisoDeCambio(antes, pedido);
-        if (aviso != null) avisos.add(aviso);
-      }
-      _estadosAnteriores[pedido.id] = pedido.estado;
-    }
-    if (avisos.isNotEmpty && mounted) mostrarAviso(context, avisos.join('\n'));
-    return pedidos;
-  }
+  /// Carga los pedidos. El aviso «Tu equipo pasó a: …» (HU02) ahora lo
+  /// crea el servidor y lo muestra AvisosService en cualquier pantalla (HU10).
+  Future<List<Pedido>> _cargar() => PedidoService.instancia.misPedidos();
 
   @override
   Widget build(BuildContext context) {
@@ -235,6 +219,23 @@ class _TarjetaPedido extends StatelessWidget {
                   ComprobanteReembolso(pedido: pedido),
                   const SizedBox(height: 12),
                 ],
+                // HU05: confirmar que lo recibió y, si hace falta, reclamar
+                // dentro de los 3 días.
+                if (pedido.reclamo != null) ...[
+                  TarjetaReclamo(reclamo: pedido.reclamo!),
+                  const SizedBox(height: 12),
+                  if (pedido.recepcion != null) ...[
+                    FotosRecepcion(recepcion: pedido.recepcion!),
+                    const SizedBox(height: 12),
+                  ],
+                ] else if (ReglasReclamo.situacion(pedido) != SituacionReclamo.noAplica) ...[
+                  PlazoReclamo(
+                    pedido: pedido,
+                    alConfirmarRecibido: () => _confirmarRecibido(context, pedido),
+                    alReclamar: () => _abrirReclamo(context, pedido),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _Seguimiento(pedido: pedido),
                 const SizedBox(height: 12),
                 // HU03: el certificado técnico del inspector.
@@ -349,6 +350,153 @@ class _SinCompras extends StatelessWidget {
           texto: 'Ver equipos',
           alTocar: () =>
               Navigator.of(context).popUntil((ruta) => ruta.isFirst),
+        ),
+      ],
+    );
+  }
+}
+
+/// HU05: el comprador confirma que recibió su equipo (con confirmación,
+/// heurística 5). Desde ahí corren los 3 días para reclamar.
+Future<void> _confirmarRecibido(BuildContext context, Pedido pedido) async {
+  final seguro = await showDialog<bool>(
+    context: context,
+    builder: (contexto) => AlertDialog(
+      title: const Text('¿Ya tienes el equipo en tus manos?'),
+      content: Text(
+        'Confírmalo solo si ya recibiste «${pedido.equipo.titulo}». Desde ahora '
+        'tendrás ${ReglasReclamo.plazoDias} días para reclamar si algo no está bien.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(contexto).pop(false),
+          child: const Text('Todavía no'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(contexto).pop(true),
+          style: FilledButton.styleFrom(backgroundColor: ColoresApp.tinta),
+          child: const Text('Sí, ya lo recibí'),
+        ),
+      ],
+    ),
+  );
+  if (seguro != true || !context.mounted) return;
+  try {
+    await PedidoService.instancia.confirmarRecibido(pedido);
+    if (context.mounted) mostrarAviso(context, 'Listo: confirmaste que recibiste tu equipo.');
+  } on ErrorDePedido catch (error) {
+    if (context.mounted) mostrarAviso(context, error.mensaje);
+  }
+}
+
+/// HU05, escenario 3: abrir un reclamo dentro del plazo.
+Future<void> _abrirReclamo(BuildContext context, Pedido pedido) async {
+  final enviado = await showDialog<bool>(
+    context: context,
+    builder: (_) => _DialogoReclamo(pedido: pedido),
+  );
+  if (enviado == true && context.mounted) {
+    mostrarAviso(context, 'Registramos tu reclamo. Lo revisaremos con las fotos del Hub.');
+  }
+}
+
+class _DialogoReclamo extends StatefulWidget {
+  const _DialogoReclamo({required this.pedido});
+
+  final Pedido pedido;
+
+  @override
+  State<_DialogoReclamo> createState() => _DialogoReclamoState();
+}
+
+class _DialogoReclamoState extends State<_DialogoReclamo> {
+  final _texto = TextEditingController();
+  bool _enviando = false;
+  bool _intento = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _texto.dispose();
+    super.dispose();
+  }
+
+  Future<void> _enviar() async {
+    setState(() => _intento = true);
+    if (ReglasReclamo.descripcion(_texto.text) != null || _enviando) return;
+    setState(() {
+      _enviando = true;
+      _error = null;
+    });
+    try {
+      await PedidoService.instancia.abrirReclamo(widget.pedido, _texto.text);
+      if (mounted) Navigator.of(context).pop(true);
+    } on ErrorDePedido catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _enviando = false;
+        _error = error.mensaje;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vence = ReglasReclamo.venceEn(widget.pedido);
+    final problema = _intento ? ReglasReclamo.descripcion(_texto.text) : null;
+
+    return AlertDialog(
+      title: const Text('Reclamo sobre tu equipo'),
+      content: SizedBox(
+        width: 460,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Cuéntanos qué pasa con «${widget.pedido.equipo.titulo}». Lo '
+              'compararemos con las fotos de cómo llegó al Hub y con el checklist '
+              'del inspector.'
+              '${vence == null ? '' : ' Puedes reclamar hasta el ${formatearFecha(vence)}.'}',
+              style: Tipos.pequeno.copyWith(fontSize: 14),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _texto,
+              maxLines: 4,
+              maxLength: 500,
+              onChanged: (_) {
+                if (_intento) setState(() {});
+              },
+              decoration: InputDecoration(
+                labelText: '¿Qué problema encontraste?',
+                hintText: 'Por ejemplo: la batería dura 20 minutos y el vendedor dijo 2 horas.',
+                errorText: problema,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              RecuadroInfo(
+                icono: Icons.error_outline,
+                color: const Color(0xFFFBE9E8),
+                colorIcono: const Color(0xFFB3261E),
+                colorTexto: const Color(0xFFB3261E),
+                texto: _error!,
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _enviando ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _enviando ? null : _enviar,
+          style: FilledButton.styleFrom(backgroundColor: ColoresApp.tinta),
+          child: Text(_enviando ? 'Enviando…' : 'Enviar reclamo'),
         ),
       ],
     );

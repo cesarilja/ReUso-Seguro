@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -10,10 +8,10 @@ import 'sesion_service.dart';
 
 /// Todo lo del vendedor después de vender (HU04 y HU06), patrón Singleton.
 ///
-/// - Cuenta las ventas nuevas para la insignia de «Mis ventas» y avisa en
-///   vivo cuando le compran, cuando se libera su pago o cuando la
-///   transferencia falla (patrón Observer: escucha a PedidoService, que a
-///   su vez escucha Supabase Realtime).
+/// - Cuenta las ventas nuevas para la insignia de «Mis ventas» (patrón
+///   Observer: escucha a PedidoService, que a su vez escucha Supabase
+///   Realtime). Los avisos «Te compraron…» los crea el servidor (HU10) y
+///   los muestra AvisosService.
 /// - Llama a las funciones del servidor: marcar_entregado,
 ///   marcar_ventas_vistas, guardar_cuenta_cobro y reintentar_liberacion
 ///   (supabase/12_vendedor_y_liberacion.sql). El navegador no decide nada.
@@ -26,17 +24,9 @@ class VendedorService extends ChangeNotifier {
 
   bool _iniciado = false;
   int _ventasNuevas = 0;
-  Map<String, EstadoPedido>? _estadosAnteriores;
-  String? _usuario;
 
   /// Número de la insignia de «Mis ventas» en la barra.
   int get ventasNuevas => _ventasNuevas;
-
-  final StreamController<String> _avisos = StreamController<String>.broadcast();
-
-  /// Avisos para mostrar en cualquier pantalla («Te compraron…»). Los
-  /// muestra main.dart; el servicio no sabe de pantallas.
-  Stream<String> get avisos => _avisos.stream;
 
   /// Se llama una vez al arrancar la app (main.dart).
   void iniciar() {
@@ -47,14 +37,9 @@ class VendedorService extends ChangeNotifier {
     _revisar();
   }
 
-  /// Vuelve a mirar las ventas: actualiza la insignia y avisa los cambios.
+  /// Vuelve a mirar las ventas y actualiza la insignia.
   Future<void> _revisar() async {
     final usuario = _cliente.auth.currentUser?.id;
-    if (usuario != _usuario) {
-      // Otra cuenta: se empieza de cero, sin avisos viejos.
-      _usuario = usuario;
-      _estadosAnteriores = null;
-    }
     if (usuario == null) {
       _cambiarNuevas(0);
       return;
@@ -62,10 +47,8 @@ class VendedorService extends ChangeNotifier {
     try {
       final ventas = await PedidoService.instancia.misVentas();
       if (_cliente.auth.currentUser?.id != usuario) return;
-      for (final aviso in ReglasVenta.avisosDeCambio(_estadosAnteriores, ventas)) {
-        _avisos.add(aviso);
-      }
-      _estadosAnteriores = {for (final v in ventas) v.id: v.estado};
+      // Desde la HU10 los avisos los crea el servidor y los muestra
+      // AvisosService; aquí solo se mantiene la insignia de ventas nuevas.
       _cambiarNuevas(ReglasVenta.contarNuevas(ventas));
     } catch (error) {
       debugPrint('[VendedorService] No se pudieron revisar las ventas: $error');

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../screens/publicar_screen.dart';
+import '../services/administracion_service.dart';
 import '../services/inspeccion_service.dart';
 import '../services/sesion_service.dart';
 import '../services/vendedor_service.dart';
 import '../tema.dart';
 import 'avisos.dart';
+import 'indicador_conexion.dart';
 import 'insignia.dart';
 import 'navegacion.dart';
 import 'pegatina.dart';
@@ -52,6 +54,8 @@ class BarraSuperior extends StatelessWidget {
       if (conSesion) Seccion.compras,
       if (conSesion) Seccion.ventas,
       if (conSesion && InspeccionService.instancia.soyInspector) Seccion.hub,
+      if (conSesion && AdministracionService.instancia.soyAdmin) Seccion.boveda,
+      if (conSesion && AdministracionService.instancia.soyAdmin) Seccion.monitor,
     ];
   }
 
@@ -62,6 +66,23 @@ class BarraSuperior extends StatelessWidget {
     final corta = ancho < 640;
     final muyCorta = ancho < 400;
 
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _barra(context, corta: corta, muyCorta: muyCorta, ancho: ancho),
+        // HU10: si se cae el tiempo real, se avisa aquí.
+        const IndicadorConexion(),
+      ],
+    );
+  }
+
+  Widget _barra(
+    BuildContext context, {
+    required bool corta,
+    required bool muyCorta,
+    required double ancho,
+  }) {
     return Container(
       height: 72,
       padding: EdgeInsets.symmetric(horizontal: margenLateral(context)),
@@ -77,6 +98,7 @@ class BarraSuperior extends StatelessWidget {
           SesionService.instancia,
           InspeccionService.instancia,
           VendedorService.instancia, // HU04: insignia de ventas nuevas
+          AdministracionService.instancia, // HU09: sección «Bóveda»
         ]),
         builder: (context, _) => LayoutBuilder(
           builder: (context, limites) {
@@ -385,6 +407,8 @@ class _MenuUsuario extends StatelessWidget {
         if (opcion == 'compras') irA(context, Seccion.compras);
         if (opcion == 'ventas') irA(context, Seccion.ventas);
         if (opcion == 'hub') irA(context, Seccion.hub);
+        if (opcion == 'boveda') irA(context, Seccion.boveda);
+        if (opcion == 'monitor') irA(context, Seccion.monitor);
         if (opcion == 'salir') {
           SesionService.instancia.cerrarSesion();
           Navigator.of(context).popUntil((ruta) => ruta.isFirst);
@@ -402,6 +426,24 @@ class _MenuUsuario extends StatelessWidget {
           ),
         ),
         const PopupMenuDivider(),
+        if (AdministracionService.instancia.soyAdmin)
+          const PopupMenuItem<String>(
+            value: 'boveda',
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.account_balance_outlined),
+              title: Text('Bóveda'),
+            ),
+          ),
+        if (AdministracionService.instancia.soyAdmin)
+          const PopupMenuItem<String>(
+            value: 'monitor',
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.notifications_active_outlined),
+              title: Text('Monitor de avisos'),
+            ),
+          ),
         if (InspeccionService.instancia.soyInspector)
           const PopupMenuItem<String>(
             value: 'hub',

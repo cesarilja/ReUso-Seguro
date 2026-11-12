@@ -17,6 +17,7 @@ import '../widgets/navegacion.dart';
 import '../widgets/pagina_base.dart';
 import '../widgets/pedido_widgets.dart';
 import '../widgets/pegatina.dart';
+import '../widgets/reclamo_widgets.dart';
 import '../widgets/venta_widgets.dart';
 import 'certificado_screen.dart';
 import 'detalle_equipo_screen.dart';
@@ -531,6 +532,15 @@ class _TarjetaVenta extends StatelessWidget {
               destacado: true,
             ),
             const SizedBox(height: 10),
+            // HU05: el reclamo del comprador y el respaldo del vendedor.
+            if (venta.reclamo != null) ...[
+              TarjetaReclamo(reclamo: venta.reclamo!, paraVendedor: true),
+              const SizedBox(height: 10),
+            ],
+            if (venta.recepcion != null) ...[
+              FotosRecepcion(recepcion: venta.recepcion!, paraVendedor: true),
+              const SizedBox(height: 10),
+            ],
             if (venta.dictamen != null) ...[
               TarjetaDictamen(dictamen: venta.dictamen!, paraVendedor: true),
               const SizedBox(height: 10),

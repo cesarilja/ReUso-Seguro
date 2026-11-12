@@ -96,6 +96,23 @@ class PedidoService extends ChangeNotifier {
     return resultado;
   }
 
+  /// HU05: el comprador confirma que recibió su equipo. Desde ese momento
+  /// tiene 3 días para abrir un reclamo.
+  Future<Pedido> confirmarRecibido(Pedido pedido) async {
+    final fila = await _llamar('confirmar_recibido', {'p_pedido': pedido.id});
+    notifyListeners();
+    return Pedido.desdeFila(fila, pedido.equipo);
+  }
+
+  /// HU05: abre un reclamo (el servidor revisa el plazo de 3 días).
+  Future<void> abrirReclamo(Pedido pedido, String descripcion) async {
+    await _llamar('abrir_reclamo', {
+      'p_pedido': pedido.id,
+      'p_descripcion': descripcion.trim(),
+    });
+    notifyListeners();
+  }
+
   /// Cancela un pedido que todavía no se ha pagado.
   Future<Pedido> cancelar(Pedido pedido) async {
     final fila = await _llamar('cancelar_pedido', {'p_pedido': pedido.id});
@@ -110,7 +127,7 @@ class PedidoService extends ChangeNotifier {
     try {
       final filas = await _cliente
           .from('pedidos')
-          .select('*, equipos(*), inspecciones(*), dictamenes(*)')
+          .select('*, equipos(*), inspecciones(*), dictamenes(*), recepciones(*), reclamos(*)')
           .eq('comprador_id', usuario.id)
           .order('creado_en', ascending: false);
       return [
@@ -143,7 +160,7 @@ class PedidoService extends ChangeNotifier {
     try {
       final filas = await _cliente
           .from('pedidos')
-          .select('*, equipos!inner(*), inspecciones(*), dictamenes(*)')
+          .select('*, equipos!inner(*), inspecciones(*), dictamenes(*), recepciones(*), reclamos(*)')
           .eq('equipos.vendedor_id', usuario.id)
           .order('pagado_en', ascending: false);
       return [
@@ -225,6 +242,25 @@ class PedidoService extends ChangeNotifier {
   /// El servidor responde con un código corto; aquí lo pasamos a un
   /// mensaje que dice qué pasó y qué hacer.
   ErrorDePedido _traducir(String mensaje) {
+    // HU05: reclamos.
+    if (mensaje.contains('FUERA_DE_PLAZO')) {
+      return const ErrorDePedido(
+        'Ya pasaron los 3 días para reclamar desde que recibiste el equipo.',
+      );
+    }
+    if (mensaje.contains('YA_RECLAMADO')) {
+      return const ErrorDePedido('Ya abriste un reclamo para este pedido.');
+    }
+    if (mensaje.contains('FALTA_DESCRIPCION')) {
+      return const ErrorDePedido(
+        'Cuéntanos qué pasa con el equipo (al menos 20 caracteres).',
+      );
+    }
+    if (mensaje.contains('SIN_RECIBIR')) {
+      return const ErrorDePedido(
+        'Primero confirma que recibiste el equipo con «Ya recibí mi equipo».',
+      );
+    }
     if (mensaje.contains('YA_COMPRADO')) {
       return const ErrorDePedido(
         'Ya compraste este equipo. Míralo en «Mis compras», en el menú de '
