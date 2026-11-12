@@ -51,9 +51,12 @@ begin
 
     -- HU04 escenario 1: la venta cuenta como nueva hasta que se ve.
     perform set_config('request.jwt.claim.sub', v_cuentas[1]::text, true);
+    perform public.marcar_ventas_vistas();
+    select * into v_pedido from public.pedidos where id = v_pedido.id;
     v_pruebas := v_pruebas || 'CP-V1 · La venta nueva se marca como vista'::text;
-    v_esperados := v_esperados || '1'::text;
-    v_obtenidos := v_obtenidos || public.marcar_ventas_vistas()::text;
+    v_esperados := v_esperados || 'vista'::text;
+    v_obtenidos := v_obtenidos ||
+      (case when v_pedido.vendedor_vio_en is null then 'sin ver' else 'vista' end);
 
     -- HU04 escenario 3: solo el vendedor marca «Ya entregué».
     perform set_config('request.jwt.claim.sub', v_cuentas[2]::text, true);

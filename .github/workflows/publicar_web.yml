@@ -1,0 +1,75 @@
+# =====================================================================
+# ReUso Seguro · Publicar la página web en GitHub Pages
+#
+# Cada vez que se une algo a «main», GitHub hace esto solo, en sus
+# propias computadoras:
+#   1. revisa el código (flutter analyze) y corre las pruebas (flutter test);
+#   2. si todo pasa, compila la app para la web;
+#   3. la publica en https://<usuario>.github.io/<repositorio>/
+# Si una prueba falla, NO se publica: la página sigue con la versión anterior.
+#
+# También se puede lanzar a mano: pestaña «Actions» → «Publicar la página
+# web» → «Run workflow».
+# =====================================================================
+name: Publicar la página web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Si se suben dos cambios seguidos, solo se publica el último.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  construir:
+    name: Revisar, probar y compilar
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Instalar los paquetes
+        run: flutter pub get
+
+      - name: Revisar el código (flutter analyze)
+        run: flutter analyze --no-fatal-infos
+
+      - name: Correr las pruebas (flutter test)
+        run: flutter test
+
+      - name: Compilar la app para la web
+        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+
+      - name: Preparar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Subir la página compilada
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  publicar:
+    name: Publicar en GitHub Pages
+    needs: construir
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+    steps:
+      - name: Publicar
+        id: despliegue
+        uses: actions/deploy-pages@v4

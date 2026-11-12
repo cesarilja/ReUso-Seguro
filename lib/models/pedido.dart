@@ -2,6 +2,7 @@ import '../formato.dart';
 import 'dictamen.dart';
 import 'equipo.dart';
 import 'inspeccion.dart';
+import 'reclamo.dart';
 
 /// Estados de un pedido, con los mismos nombres del Sprint Planning.
 ///
@@ -119,6 +120,9 @@ class Pedido {
     this.entregadoEn,
     this.liberacionMotivo,
     this.liberacionIntentos = 0,
+    this.recepcion,
+    this.reclamo,
+    this.recibidoCompradorEn,
   });
 
   /// Crea un pedido a partir de una fila de la tabla `pedidos`.
@@ -157,6 +161,9 @@ class Pedido {
       entregadoEn: fecha('entregado_en'),
       liberacionMotivo: MotivoLiberacion.desde(fila['liberacion_motivo'] as String?),
       liberacionIntentos: (fila['liberacion_intentos'] as num?)?.toInt() ?? 0,
+      recepcion: Recepcion.desdeRelacion(fila['recepciones']),
+      reclamo: Reclamo.desdeRelacion(fila['reclamos']),
+      recibidoCompradorEn: fecha('recibido_comprador_en'),
     );
   }
 
@@ -198,6 +205,15 @@ class Pedido {
   /// HU06: por qué no se pudo transferir el pago al vendedor.
   final MotivoLiberacion? liberacionMotivo;
   final int liberacionIntentos;
+
+  /// HU05: las fotos de cómo llegó al Hub (respaldo del vendedor).
+  final Recepcion? recepcion;
+
+  /// HU05: el reclamo del comprador, si abrió uno.
+  final Reclamo? reclamo;
+
+  /// HU05: cuándo confirmó el comprador que recibió su equipo.
+  final DateTime? recibidoCompradorEn;
 
   /// El checklist del Hub (HU07), si ya se hizo y la consulta lo trajo.
   final Inspeccion? inspeccion;

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../screens/boveda_screen.dart';
 import '../screens/como_funciona_screen.dart';
 import '../screens/mis_compras_screen.dart';
 import '../screens/mis_ventas_screen.dart';
+import '../screens/monitor_avisos_screen.dart';
 import '../screens/panel_hub_screen.dart';
 import 'avisos.dart';
 
@@ -12,7 +14,11 @@ enum Seccion {
   comoFunciona('Cómo funciona', Icons.help_outline, conCuenta: false),
   compras('Mis compras', Icons.shopping_bag_outlined),
   ventas('Mis ventas', Icons.sell_outlined),
-  hub('Panel del Hub', Icons.fact_check_outlined);
+  hub('Panel del Hub', Icons.fact_check_outlined),
+  // HU09: solo para administradores.
+  boveda('Bóveda', Icons.account_balance_outlined),
+  // HU10: solo para administradores.
+  monitor('Monitor de avisos', Icons.notifications_active_outlined);
 
   const Seccion(this.nombre, this.icono, {this.conCuenta = true});
 
@@ -41,6 +47,8 @@ Future<void> irA(BuildContext context, Seccion seccion) async {
     Seccion.compras => const MisComprasScreen(),
     Seccion.ventas => const MisVentasScreen(),
     Seccion.hub => const PanelHubScreen(),
+    Seccion.boveda => const BovedaScreen(),
+    Seccion.monitor => const MonitorAvisosScreen(),
   };
   if (pantalla != null) {
     navegador.push(MaterialPageRoute<void>(builder: (_) => pantalla));

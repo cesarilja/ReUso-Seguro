@@ -5,6 +5,7 @@ import '../models/dictamen.dart';
 import '../models/equipo.dart';
 import '../models/inspeccion.dart';
 import '../models/pedido.dart';
+import '../models/reclamo.dart';
 import 'catalogo_service.dart';
 import 'pedido_service.dart';
 import 'publicacion_service.dart';
@@ -243,15 +244,54 @@ class InspeccionService extends ChangeNotifier {
     }
   }
 
-  /// Registra que el vendedor entregó el equipo en el Hub.
-  Future<void> recibirEnHub(Pedido pedido) async {
+  /// HU05: registra que el equipo llegó al Hub, con 2 a 6 fotos de cómo
+  /// llegó. Las fotos se guardan como `<pedido>/recepcion-…` y el servidor
+  /// no deja borrarlas ni cambiarlas (respaldo ante reclamos).
+  Future<void> recibirEnHub(
+    Pedido pedido, {
+    required List<FotoElegida> fotos,
+    String nota = '',
+  }) async {
+    final problema = ReglasReclamo.fotosRecepcion(fotos.length);
+    if (problema != null) throw ErrorDeInspeccion(problema);
+
+    final subidas = <String>[];
     try {
-      await _cliente.rpc('recibir_en_hub', params: {'p_pedido': pedido.id});
+      final marca = DateTime.now().millisecondsSinceEpoch;
+      for (var i = 0; i < fotos.length; i++) {
+        final foto = fotos[i];
+        final ruta = '${pedido.id}/recepcion-$marca-${i + 1}.${foto.extension}';
+        await _cliente.storage.from(_almacen).uploadBinary(
+              ruta,
+              foto.bytes,
+              fileOptions: FileOptions(contentType: foto.tipo),
+            );
+        subidas.add(ruta);
+      }
+      await _cliente.rpc('recibir_en_hub', params: {
+        'p_pedido': pedido.id,
+        'p_fotos': subidas,
+        'p_nota': nota.trim(),
+      });
       PedidoService.instancia.avisarCambio();
       notifyListeners();
+    } on StorageException catch (error) {
+      debugPrint('[InspeccionService] fotos de recepción: ${error.message}');
+      await _borrar(subidas);
+      throw const ErrorDeInspeccion(
+        'No pudimos subir las fotos. Revisa que sean JPG, PNG o WEBP de hasta '
+        '5 MB y vuelve a intentarlo. No se registró la llegada.',
+      );
     } on PostgrestException catch (error) {
+      debugPrint('[InspeccionService] recibir_en_hub: ${error.message}');
+      await _borrar(subidas);
+      if (error.message.contains('FALTAN_FOTOS')) {
+        throw const ErrorDeInspeccion('Sube de 2 a 6 fotos de cómo llegó el equipo.');
+      }
       throw _traducir(error.message, pedido.equipo.categoria);
-    } catch (_) {
+    } catch (error) {
+      debugPrint('[InspeccionService] recibir_en_hub: $error');
+      await _borrar(subidas);
       throw const ErrorDeInspeccion(
         'No pudimos conectarnos. Revisa tu conexión y vuelve a intentarlo.',
       );

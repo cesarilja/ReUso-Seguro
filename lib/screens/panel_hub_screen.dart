@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../formato.dart';
 import '../models/pedido.dart';
+import '../models/reclamo.dart';
 import '../services/inspeccion_service.dart';
+import '../services/publicacion_service.dart';
 import '../tema.dart';
 import '../widgets/avisos.dart';
 import '../widgets/imagen_equipo.dart';
@@ -28,7 +31,6 @@ class PanelHubScreen extends StatefulWidget {
 class _PanelHubScreenState extends State<PanelHubScreen> {
   late Future<List<PedidoHub>> _pedidos =
       InspeccionService.instancia.pedidosDelHub();
-  final Set<String> _recibiendo = {};
 
   @override
   void initState() {
@@ -47,17 +49,16 @@ class _PanelHubScreenState extends State<PanelHubScreen> {
     setState(() => _pedidos = InspeccionService.instancia.pedidosDelHub());
   }
 
+  /// HU05: para registrar la llegada hacen falta de 2 a 6 fotos de cómo
+  /// llegó el equipo (respaldo ante reclamos).
   Future<void> _recibir(Pedido pedido) async {
-    setState(() => _recibiendo.add(pedido.id));
-    try {
-      await InspeccionService.instancia.recibirEnHub(pedido);
-      if (mounted) {
-        mostrarAviso(context, 'Registramos la llegada del pedido ${pedido.codigo}.');
-      }
-    } on ErrorDeInspeccion catch (error) {
-      if (mounted) mostrarAviso(context, error.mensaje);
-    } finally {
-      if (mounted) setState(() => _recibiendo.remove(pedido.id));
+    final listo = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => DialogoRecepcion(pedido: pedido),
+    );
+    if (listo == true && mounted) {
+      mostrarAviso(context, 'Registramos la llegada del pedido ${pedido.codigo} con sus fotos.');
     }
   }
 
@@ -187,14 +188,10 @@ class _PanelHubScreenState extends State<PanelHubScreen> {
                     vacio: 'No hay equipos en camino al Hub.',
                     items: porRecibir,
                     accion: (item) => BotonPegatina(
-                      texto: _recibiendo.contains(item.pedido.id)
-                          ? 'Registrando…'
-                          : 'Registrar llegada',
+                      texto: 'Registrar llegada',
                       icono: Icons.move_to_inbox_outlined,
                       principal: false,
-                      alTocar: _recibiendo.contains(item.pedido.id)
-                          ? () {}
-                          : () => _recibir(item.pedido),
+                      alTocar: () => _recibir(item.pedido),
                     ),
                   ),
                   const SizedBox(height: 28),
@@ -448,6 +445,207 @@ class _TarjetaHub extends StatelessWidget {
                 ],
               ),
       ),
+    );
+  }
+}
+
+/// HU05, escenario 1: el inspector sube de 2 a 6 fotos del estado en que
+/// llegó el equipo antes de confirmar la recepción.
+class DialogoRecepcion extends StatefulWidget {
+  const DialogoRecepcion({super.key, required this.pedido});
+
+  final Pedido pedido;
+
+  @override
+  State<DialogoRecepcion> createState() => _DialogoRecepcionState();
+}
+
+class _DialogoRecepcionState extends State<DialogoRecepcion> {
+  final List<FotoElegida> _fotos = [];
+  final _nota = TextEditingController();
+  bool _guardando = false;
+  bool _intento = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _nota.dispose();
+    super.dispose();
+  }
+
+  Future<void> _agregar() async {
+    final espacio = ReglasReclamo.maximoFotosRecepcion - _fotos.length;
+    if (espacio <= 0) return;
+    try {
+      final archivos = await ImagePicker().pickMultiImage(maxWidth: 1600, imageQuality: 85);
+      final rechazos = <String>[];
+      for (final archivo in archivos.take(espacio)) {
+        final nombre = archivo.name.toLowerCase();
+        final tipo = archivo.mimeType ??
+            (nombre.endsWith('.png')
+                ? 'image/png'
+                : nombre.endsWith('.webp')
+                    ? 'image/webp'
+                    : 'image/jpeg');
+        final foto = FotoElegida(
+          bytes: await archivo.readAsBytes(),
+          nombre: archivo.name,
+          tipo: tipo == 'image/jpg' ? 'image/jpeg' : tipo,
+        );
+        final problema = ReglasPublicacion.foto(foto);
+        if (problema == null) {
+          _fotos.add(foto);
+        } else {
+          rechazos.add(problema);
+        }
+      }
+      if (!mounted) return;
+      setState(() => _error = rechazos.isEmpty ? null : rechazos.first);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'No pudimos abrir las fotos.');
+    }
+  }
+
+  Future<void> _confirmar() async {
+    setState(() => _intento = true);
+    if (_guardando || ReglasReclamo.fotosRecepcion(_fotos.length) != null) return;
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+    try {
+      await InspeccionService.instancia.recibirEnHub(
+        widget.pedido,
+        fotos: _fotos,
+        nota: _nota.text,
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } on ErrorDeInspeccion catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _guardando = false;
+        _error = error.mensaje;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final falta = _intento ? ReglasReclamo.fotosRecepcion(_fotos.length) : null;
+
+    return AlertDialog(
+      title: Text('Registrar llegada · ${widget.pedido.codigo}'),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Toma de ${ReglasReclamo.minimoFotosRecepcion} a '
+                '${ReglasReclamo.maximoFotosRecepcion} fotos de cómo llegó '
+                '«${widget.pedido.equipo.titulo}»: frente, atrás, pantalla y '
+                'cualquier golpe o rayón. Son el respaldo ante reclamos y después '
+                'no se pueden cambiar ni borrar.',
+                style: Tipos.pequeno.copyWith(fontSize: 14),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (var i = 0; i < _fotos.length; i++)
+                    Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.memory(_fotos[i].bytes, width: 80, height: 80, fit: BoxFit.cover),
+                        ),
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: IconButton(
+                            tooltip: 'Quitar esta foto',
+                            visualDensity: VisualDensity.compact,
+                            style: IconButton.styleFrom(backgroundColor: Colors.white),
+                            onPressed: _guardando ? null : () => setState(() => _fotos.removeAt(i)),
+                            icon: const Icon(Icons.close, size: 16),
+                          ),
+                        ),
+                      ],
+                    ),
+                  if (_fotos.length < ReglasReclamo.maximoFotosRecepcion)
+                    InkWell(
+                      onTap: _guardando ? null : _agregar,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: falta != null ? const Color(0xFFB3261E) : ColoresApp.tinta,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add_a_photo_outlined, color: ColoresApp.tinta),
+                            Text('Agregar', style: TextStyle(fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                falta ??
+                    '${_fotos.length} de ${ReglasReclamo.maximoFotosRecepcion} fotos '
+                        '(mínimo ${ReglasReclamo.minimoFotosRecepcion}).',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: falta != null ? const Color(0xFFB3261E) : ColoresApp.pizarra,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _nota,
+                maxLength: 200,
+                decoration: InputDecoration(
+                  labelText: 'Nota (opcional)',
+                  hintText: 'Por ejemplo: llegó con una marca leve en la tapa.',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 6),
+                RecuadroInfo(
+                  icono: Icons.error_outline,
+                  color: const Color(0xFFFBE9E8),
+                  colorIcono: const Color(0xFFB3261E),
+                  colorTexto: const Color(0xFFB3261E),
+                  texto: _error!,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _guardando ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: _guardando ? null : _confirmar,
+          style: FilledButton.styleFrom(backgroundColor: ColoresApp.tinta),
+          icon: Icon(_guardando ? Icons.hourglass_top : Icons.move_to_inbox_outlined),
+          label: Text(_guardando ? 'Subiendo fotos…' : 'Confirmar llegada'),
+        ),
+      ],
     );
   }
 }
