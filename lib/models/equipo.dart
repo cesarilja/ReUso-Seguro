@@ -1,4 +1,5 @@
 import '../formato.dart';
+import 'plan_inspeccion.dart';
 
 /// Estado de una publicación dentro del catálogo.
 enum EstadoPublicacion {
@@ -29,6 +30,10 @@ class Equipo {
     this.fotos = const [],
     this.ilustracion,
     this.estado = EstadoPublicacion.disponible,
+    this.plan = PlanInspeccion.basica,
+    this.express = false,
+    this.autoevaluacion = const {},
+    this.puntajeInspeccion,
   });
 
   /// Crea un equipo a partir de una fila de la tabla `equipos`.
@@ -52,7 +57,20 @@ class Equipo {
       fotos: rutas.map(urlDeFoto).toList(growable: false),
       ilustracion: fila['ilustracion'] as String?,
       estado: EstadoPublicacion.desde(fila['estado'] as String?),
+      plan: PlanInspeccion.desde(fila['plan_inspeccion'] as String?),
+      express: fila['express'] as bool? ?? false,
+      autoevaluacion: _leerAutoevaluacion(fila['autoevaluacion']),
+      puntajeInspeccion: (fila['puntaje_inspeccion'] as num?)?.toDouble(),
     );
+  }
+
+  static Map<String, int> _leerAutoevaluacion(Object? dato) {
+    if (dato is! Map) return const {};
+    return {
+      for (final entrada in dato.entries)
+        if (entrada.value is num)
+          '${entrada.key}': (entrada.value as num).toInt(),
+    };
   }
 
   final String id;
@@ -80,6 +98,21 @@ class Equipo {
   final String? ilustracion;
 
   final EstadoPublicacion estado;
+
+  /// HU16: el plan de inspección que eligió (y paga) el vendedor.
+  final PlanInspeccion plan;
+
+  /// HU16: si pidió la inspección Express (menos de 24 h en el Hub).
+  final bool express;
+
+  /// HU19: cómo calificó el vendedor cada punto del checklist (1 a 4).
+  /// Vacío en las publicaciones de antes del Sprint 4.
+  final Map<String, int> autoevaluacion;
+
+  /// HU15: el puntaje de su última inspección (de 1 a 4), si ya tuvo una.
+  final double? puntajeInspeccion;
+
+  bool get inspeccionDetallada => plan == PlanInspeccion.detallada;
 
   /// Solo los equipos disponibles se pueden comprar.
   bool get estaDisponible => estado == EstadoPublicacion.disponible;

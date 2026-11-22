@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../models/equipo.dart';
+import '../models/escala.dart';
+import '../models/inspeccion.dart';
 import '../models/pedido.dart';
 import '../services/catalogo_service.dart';
 import '../services/pedido_service.dart';
+import '../services/reputacion_service.dart';
 import '../services/sesion_service.dart';
 import '../tema.dart';
 import '../widgets/avisos.dart';
@@ -12,6 +15,8 @@ import '../widgets/equipo_widgets.dart';
 import '../widgets/imagen_equipo.dart';
 import '../widgets/pegatina.dart';
 import '../widgets/pie_de_pagina.dart';
+import '../widgets/plan_widgets.dart';
+import '../widgets/reputacion_widgets.dart';
 import 'mis_compras_screen.dart';
 import 'pago_screen.dart';
 
@@ -35,6 +40,9 @@ class _DetalleEquipoScreenState extends State<DetalleEquipoScreen> {
   void initState() {
     super.initState();
     CatalogoService.cambios.addListener(_actualizar);
+    // HU20: la reputación del vendedor, al día.
+    final vendedor = widget.equipo.vendedorId;
+    if (vendedor != null) ReputacionService.instancia.deVendedor(vendedor);
   }
 
   @override
@@ -207,10 +215,24 @@ class _InfoEquipoState extends State<_InfoEquipo> {
             ),
           ],
         ),
+        // HU20: la reputación sale de sus inspecciones, no de reseñas.
+        ListenableBuilder(
+          listenable: ReputacionService.instancia,
+          builder: (context, _) {
+            final reputacion = ReputacionService.instancia.de(equipo.vendedorId);
+            if (reputacion == null) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: ResumenReputacion(reputacion: reputacion),
+            );
+          },
+        ),
         const SizedBox(height: 24),
         Container(height: 2, color: ColoresApp.nube),
         const SizedBox(height: 24),
         _Dato(titulo: 'Estado declarado', valor: equipo.estadoDeclarado),
+        const SizedBox(height: 18),
+        _InspeccionDelEquipo(equipo: equipo),
         const SizedBox(height: 18),
         _Dato(titulo: 'Descripción', valor: equipo.descripcion),
         const SizedBox(height: 28),
@@ -230,6 +252,72 @@ class _InfoEquipoState extends State<_InfoEquipo> {
           )
         else
           _AvisoReservado(equipo: equipo),
+      ],
+    );
+  }
+}
+
+/// HU16 y HU19: qué inspección tendrá el equipo y cómo dice el vendedor
+/// que está cada parte.
+class _InspeccionDelEquipo extends StatelessWidget {
+  const _InspeccionDelEquipo({required this.equipo});
+
+  final Equipo equipo;
+
+  @override
+  Widget build(BuildContext context) {
+    final plan = equipo.plan;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Inspección del Hub', style: Tipos.subtitulo.copyWith(fontSize: 15)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (equipo.inspeccionDetallada)
+              const SelloDetallada()
+            else
+              const Text('Inspección básica', style: Tipos.cuerpo),
+            if (equipo.puntajeInspeccion != null)
+              EtiquetaPuntaje(puntaje: equipo.puntajeInspeccion!),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Si lo compras, tienes ${plan.diasReclamo} días para reclamar desde '
+          'que lo recibas.',
+          style: Tipos.pequeno.copyWith(fontSize: 14),
+        ),
+        if (equipo.autoevaluacion.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Cómo califica el vendedor cada parte',
+            style: Tipos.cuerpo.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 6),
+          for (final punto in PuntoChecklist.para(equipo.categoria))
+            if (Calificacion.desde(equipo.autoevaluacion[punto.clave]) != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(punto.nombre, style: Tipos.cuerpo)),
+                    EtiquetaCalificacion(
+                      calificacion: Calificacion.desde(
+                        equipo.autoevaluacion[punto.clave],
+                      )!,
+                    ),
+                  ],
+                ),
+              ),
+          Text(
+            'El inspector usa la misma escala y lo compara en el certificado.',
+            style: Tipos.pequeno.copyWith(fontSize: 13),
+          ),
+        ],
       ],
     );
   }

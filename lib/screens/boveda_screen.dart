@@ -159,7 +159,7 @@ class PanelBoveda extends StatelessWidget {
         // Heurística 1: el estado del cuadre siempre arriba.
         _EstadoCuadre(estado: estado, revisando: revisando, alRevisar: alRevisar),
         const SizedBox(height: 24),
-        // Heurística 8: 4 totales grandes y el detalle debajo.
+        // Heurística 8: los totales grandes y el detalle debajo.
         _Totales(totales: estado.totales),
         if (estado.vacia) ...[
           const SizedBox(height: 20),
@@ -192,6 +192,35 @@ class PanelBoveda extends StatelessWidget {
                   for (final entrada in estado.porEstado.entries)
                     _ConteoEstado(estado: entrada.key, cantidad: entrada.value),
                 ],
+              ),
+          ],
+        ),
+        const SizedBox(height: 32),
+        // HU19: vendedores cuya declaración no coincidió con la inspección.
+        _Seccion(
+          titulo: 'Declaraciones inexactas (${estado.declaracionesInexactas.length})',
+          ayuda: 'Vendedores que calificaron su equipo 2 notas o más por encima '
+              'de lo que encontró el inspector, en 2 o más puntos.',
+          vacio: 'Ningún vendedor tiene declaraciones inexactas.',
+          hijos: [
+            for (final d in estado.declaracionesInexactas)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.report_problem_outlined,
+                        size: 18, color: Color(0xFF8A5A00)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${d.vendedor}: ${d.cuantas} '
+                        '${d.cuantas == 1 ? 'declaración inexacta' : 'declaraciones inexactas'}'
+                        '${d.ultima == null ? '' : ' (la última el ${formatearFecha(d.ultima!)})'}',
+                        style: Tipos.pequeno.copyWith(fontSize: 14, color: ColoresApp.tinta),
+                      ),
+                    ),
+                  ],
+                ),
               ),
           ],
         ),
@@ -409,12 +438,21 @@ class _Totales extends StatelessWidget {
         titulo: 'Comisiones',
         monto: totales.comisiones,
         icono: Icons.savings_outlined,
-        ayuda: '8 % de ventas aprobadas',
+        ayuda: '5 % de ventas aprobadas',
+      ),
+      // HU17: no pasa por la custodia; se muestra aparte.
+      _Total(
+        titulo: 'Inspecciones cobradas',
+        monto: totales.inspecciones,
+        icono: Icons.fact_check_outlined,
+        ayuda: 'Pagadas por vendedores (fuera de custodia)',
       ),
     ];
     return LayoutBuilder(
       builder: (context, medidas) {
-        final columnas = medidas.maxWidth >= 720 ? 4 : 2;
+        final columnas = medidas.maxWidth >= 900
+            ? 5
+            : (medidas.maxWidth >= 600 ? 3 : 2);
         final ancho = (medidas.maxWidth - 12 * (columnas - 1)) / columnas;
         return Wrap(
           spacing: 12,

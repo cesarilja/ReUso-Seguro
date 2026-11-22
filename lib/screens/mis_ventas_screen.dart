@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../formato.dart';
 import '../models/equipo.dart';
+import '../models/inspeccion.dart';
 import '../models/pedido.dart';
+import '../models/reputacion.dart';
 import '../models/venta.dart';
 import '../services/catalogo_service.dart';
 import '../services/pasarela.dart';
 import '../services/pedido_service.dart';
+import '../services/reputacion_service.dart';
 import '../services/sesion_service.dart';
 import '../services/vendedor_service.dart';
 import '../tema.dart';
@@ -16,8 +19,11 @@ import '../widgets/imagen_equipo.dart';
 import '../widgets/navegacion.dart';
 import '../widgets/pagina_base.dart';
 import '../widgets/pedido_widgets.dart';
+import '../widgets/pago_inspeccion_dialogo.dart';
 import '../widgets/pegatina.dart';
+import '../widgets/plan_widgets.dart';
 import '../widgets/reclamo_widgets.dart';
+import '../widgets/reputacion_widgets.dart';
 import '../widgets/venta_widgets.dart';
 import 'certificado_screen.dart';
 import 'detalle_equipo_screen.dart';
@@ -39,12 +45,26 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
       const CatalogoService().misPublicaciones();
   late Future<CuentaCobro?> _cuenta = VendedorService.instancia.miCuenta();
 
+  /// HU20: la reputación del vendedor y la comisión que le toca. Se guarda
+  /// en el estado para que el desglose de cada venta use la misma tasa.
+  Reputacion? _miReputacion;
+
+  Future<void> _cargarReputacion() async {
+    final reputacion = await ReputacionService.instancia.mia();
+    if (mounted && reputacion != null) {
+      setState(() => _miReputacion = reputacion);
+    }
+  }
+
+  double get _tasa => _miReputacion?.tasaComision ?? Pedido.tasaComision;
+
   /// Ventas con una acción en curso (para no tocar dos veces).
   final Set<String> _ocupadas = {};
 
   @override
   void initState() {
     super.initState();
+    _cargarReputacion();
     PedidoService.instancia.addListener(_recargar);
     SesionService.instancia.addListener(_recargar);
     CatalogoService.cambios.addListener(_recargar);
@@ -76,11 +96,27 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
       _publicaciones = const CatalogoService().misPublicaciones();
       _cuenta = VendedorService.instancia.miCuenta();
     });
+    _cargarReputacion();
   }
 
   /// HU04, escenario 3: «Ya entregué el equipo», con confirmación
   /// (heurística 5: prevención de errores).
   Future<void> _entregar(Pedido venta) async {
+    // HU17: desde el Sprint 4 el vendedor paga la inspección al entregar.
+    if (venta.inspeccionPendiente) {
+      if (_ocupadas.contains(venta.id)) return;
+      final pagado = await pagarInspeccion(context, venta);
+      if (!mounted) return;
+      if (pagado) {
+        mostrarAviso(
+          context,
+          'Pagaste la inspección y le avisamos al Hub que entregaste el '
+          'pedido ${venta.codigo}.',
+        );
+      }
+      _recargar();
+      return;
+    }
     final seguro = await showDialog<bool>(
       context: context,
       builder: (contexto) => AlertDialog(
@@ -105,6 +141,36 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
     if (seguro != true || !mounted) return;
     await _accion(venta, () => VendedorService.instancia.marcarEntregado(venta),
         'Listo: le avisamos al Hub que entregaste el pedido ${venta.codigo}.');
+  }
+
+  /// HU16, escenario 5: cambiar el plan de un equipo disponible.
+  Future<void> _cambiarPlan(Equipo equipo) async {
+    final elegido = await elegirPlan(
+      context,
+      plan: equipo.plan,
+      express: equipo.express,
+      precio: equipo.precio,
+      tasaComision: _tasa,
+    );
+    if (elegido == null || !mounted) return;
+    final (plan, express) = elegido;
+    try {
+      await VendedorService.instancia.cambiarPlan(
+        equipo.id,
+        plan: plan,
+        express: express,
+      );
+      if (mounted) {
+        mostrarAviso(
+          context,
+          'Guardamos el plan ${plan.nombre}${express ? ' Express' : ''} para '
+          '«${equipo.titulo}».',
+        );
+      }
+    } on ErrorDePedido catch (error) {
+      if (mounted) mostrarAviso(context, error.mensaje);
+    }
+    _recargar();
   }
 
   /// HU06, escenario 2: reintentar la transferencia.
@@ -196,6 +262,10 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
               );
             },
           ),
+          const SizedBox(height: 16),
+          // HU20: su nivel, su comisión y lo que le falta para subir.
+          if (_miReputacion != null)
+            ResumenReputacion(reputacion: _miReputacion!, paraVendedor: true),
           const SizedBox(height: 28),
           FutureBuilder<List<Pedido>>(
             future: _ventas,
@@ -234,10 +304,10 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
 
               final cobrado = ventas
                   .where((v) => v.pagoLiberado)
-                  .fold<double>(0, (suma, v) => suma + v.recibeVendedor);
+                  .fold<double>(0, (suma, v) => suma + v.recibeVendedorCon(_tasa));
               final porCobrar = ventas
                   .where((v) => !v.pagoLiberado && !v.noPasoInspeccion)
-                  .fold<double>(0, (suma, v) => suma + v.recibeVendedor);
+                  .fold<double>(0, (suma, v) => suma + v.recibeVendedorCon(_tasa));
 
               return Column(
                 children: [
@@ -262,6 +332,7 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
                   for (final venta in ventas) ...[
                     _TarjetaVenta(
                       venta: venta,
+                      tasa: _tasa,
                       ocupada: _ocupadas.contains(venta.id),
                       alEntregar: () => _entregar(venta),
                       alReintentar: () => _reintentar(venta),
@@ -310,7 +381,10 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
               return Column(
                 children: [
                   for (final e in equipos) ...[
-                    _FilaPublicacion(equipo: e),
+                    _FilaPublicacion(
+                      equipo: e,
+                      alCambiarPlan: () => _cambiarPlan(e),
+                    ),
                     const SizedBox(height: 10),
                   ],
                 ],
@@ -325,9 +399,10 @@ class _MisVentasScreenState extends State<MisVentasScreen> {
 
 /// Un equipo publicado por la persona, con su estado.
 class _FilaPublicacion extends StatelessWidget {
-  const _FilaPublicacion({required this.equipo});
+  const _FilaPublicacion({required this.equipo, required this.alCambiarPlan});
 
   final Equipo equipo;
+  final VoidCallback alCambiarPlan;
 
   @override
   Widget build(BuildContext context) {
@@ -363,12 +438,21 @@ class _FilaPublicacion extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    equipo.precioFormateado,
+                    '${equipo.precioFormateado} · Inspección '
+                    '${equipo.plan.nombre}${equipo.express ? ' Express' : ''}',
                     style: Tipos.pequeno.copyWith(color: ColoresApp.tinta),
                   ),
                 ],
               ),
             ),
+            // HU16: el plan solo se cambia mientras no se haya vendido.
+            if (disponible)
+              TextButton.icon(
+                onPressed: alCambiarPlan,
+                style: TextButton.styleFrom(foregroundColor: ColoresApp.tinta),
+                icon: const Icon(Icons.tune, size: 18),
+                label: const Text('Cambiar plan'),
+              ),
             const SizedBox(width: 8),
             // Color + ícono + texto, nunca solo color.
             Container(
@@ -459,10 +543,15 @@ class _TarjetaVenta extends StatelessWidget {
     required this.alEntregar,
     required this.alReintentar,
     required this.alRegistrarCuenta,
+    required this.tasa,
   });
 
   final Pedido venta;
   final bool ocupada;
+
+  /// HU20: la comisión del nivel del vendedor, para las ventas que todavía
+  /// no se liberan.
+  final double tasa;
   final VoidCallback alEntregar;
   final VoidCallback alReintentar;
   final VoidCallback alRegistrarCuenta;
@@ -521,16 +610,24 @@ class _TarjetaVenta extends StatelessWidget {
             FilaDato(
               titulo: rechazado
                   ? 'Comisión de ReUso Seguro (no se cobra)'
-                  : 'Comisión de ReUso Seguro (8 %)',
-              valor: '- ${formatearDolares(venta.comisionEstimada)}',
+                  : 'Comisión de ReUso Seguro (${_porcentajeComision(venta, tasa)} %)',
+              valor: '- ${formatearDolares(venta.comisionEstimadaCon(tasa))}',
             ),
             FilaDato(
               titulo: rechazado
                   ? 'No recibes pago'
                   : (venta.pagoLiberado ? 'Recibiste' : 'Recibirás'),
-              valor: formatearDolares(venta.recibeVendedor),
+              valor: formatearDolares(venta.recibeVendedorCon(tasa)),
               destacado: true,
             ),
+            // HU17: la inspección se paga aparte, al entregar.
+            if (venta.inspeccionRequerida)
+              FilaDato(
+                titulo: 'Inspección ${venta.planInspeccion.nombre}'
+                    '${venta.conExpress ? ' Express' : ''}'
+                    '${venta.inspeccionPagada ? (rechazado ? ' (pagada, no se devuelve)' : ' (ya la pagaste)') : ' (se paga al entregar)'}',
+                valor: formatearDolares(venta.costoInspeccion),
+              ),
             const SizedBox(height: 10),
             // HU05: el reclamo del comprador y el respaldo del vendedor.
             if (venta.reclamo != null) ...[
@@ -544,6 +641,16 @@ class _TarjetaVenta extends StatelessWidget {
             if (venta.dictamen != null) ...[
               TarjetaDictamen(dictamen: venta.dictamen!, paraVendedor: true),
               const SizedBox(height: 10),
+              // HU19: lo que declaró no coincidió con la inspección.
+              if (venta.dictamen!.declaracionInexacta) ...[
+                AvisoDeclaracionInexacta(
+                  puntos: [
+                    for (final clave in venta.dictamen!.puntosInexactos)
+                      PuntoChecklist.nombreDe(clave, equipo.categoria),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
               // HU03: el vendedor también puede ver el certificado.
               BotonPegatina(
                 texto: 'Ver certificado técnico',
@@ -588,6 +695,14 @@ class _TarjetaVenta extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// El porcentaje que se cobró (las ventas viejas se liberaron con 8 %).
+  static int _porcentajeComision(Pedido venta, double tasa) {
+    if (venta.comision != null && venta.monto > 0) {
+      return (venta.comision! / venta.monto * 100).round();
+    }
+    return (tasa * 100).round();
   }
 
   String _queSigue(EstadoPedido estado, DateTime? liberadoEn) {

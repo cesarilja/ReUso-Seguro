@@ -58,14 +58,17 @@ class _PegatinaState extends State<Pegatina> {
         ],
       ),
       child: sePuedeTocar
-          ? Material(
-              type: MaterialType.transparency,
-              child: InkWell(
-                onTap: widget.alTocar,
-                onHover: (valor) => setState(() => _conMouse = valor),
-                onFocusChange: (valor) => setState(() => _conFoco = valor),
-                borderRadius: radioInterior,
-                child: contenido,
+          ? MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: widget.alTocar,
+                  onHover: (valor) => setState(() => _conMouse = valor),
+                  onFocusChange: (valor) => setState(() => _conFoco = valor),
+                  borderRadius: radioInterior,
+                  child: contenido,
+                ),
               ),
             )
           : contenido,
@@ -85,6 +88,7 @@ class BotonPegatina extends StatelessWidget {
     this.principal = true,
     this.expandido = false,
     this.compacto = false,
+    this.tooltip,
   });
 
   final String texto;
@@ -98,11 +102,14 @@ class BotonPegatina extends StatelessWidget {
   /// Si es verdadero, usa menos espacio a los lados (pantallas pequeñas).
   final bool compacto;
 
+  /// Texto de ayuda que aparece al pasar el cursor encima.
+  final String? tooltip;
+
   @override
   Widget build(BuildContext context) {
     final colorTexto = principal ? Colors.white : ColoresApp.tinta;
 
-    return Pegatina(
+    final boton = Pegatina(
       alTocar: alTocar,
       color: principal ? ColoresApp.tinta : Colors.white,
       colorSombra: principal ? ColoresApp.orquidea : ColoresApp.tinta,
@@ -126,5 +133,10 @@ class BotonPegatina extends StatelessWidget {
         ),
       ),
     );
+
+    if (tooltip != null) {
+      return Tooltip(message: tooltip!, child: boton);
+    }
+    return boton;
   }
 }

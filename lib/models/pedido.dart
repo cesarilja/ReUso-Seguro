@@ -2,6 +2,7 @@ import '../formato.dart';
 import 'dictamen.dart';
 import 'equipo.dart';
 import 'inspeccion.dart';
+import 'plan_inspeccion.dart';
 import 'reclamo.dart';
 
 /// Estados de un pedido, con los mismos nombres del Sprint Planning.
@@ -123,6 +124,12 @@ class Pedido {
     this.recepcion,
     this.reclamo,
     this.recibidoCompradorEn,
+    this.inspeccionRequerida = false,
+    this.inspeccionPlan,
+    this.inspeccionExpress = false,
+    this.inspeccionMonto,
+    this.inspeccionPagadaEn,
+    this.inspeccionDetalle,
   });
 
   /// Crea un pedido a partir de una fila de la tabla `pedidos`.
@@ -164,6 +171,14 @@ class Pedido {
       recepcion: Recepcion.desdeRelacion(fila['recepciones']),
       reclamo: Reclamo.desdeRelacion(fila['reclamos']),
       recibidoCompradorEn: fecha('recibido_comprador_en'),
+      inspeccionRequerida: fila['inspeccion_requerida'] as bool? ?? false,
+      inspeccionPlan: fila['inspeccion_plan'] == null
+          ? null
+          : PlanInspeccion.desde(fila['inspeccion_plan'] as String?),
+      inspeccionExpress: fila['inspeccion_express'] as bool? ?? false,
+      inspeccionMonto: (fila['inspeccion_monto'] as num?)?.toDouble(),
+      inspeccionPagadaEn: fecha('inspeccion_pagada_en'),
+      inspeccionDetalle: fila['inspeccion_detalle'] as String?,
     );
   }
 
@@ -221,7 +236,18 @@ class Pedido {
   /// El dictamen técnico (HU08), si ya se emitió.
   final Dictamen? dictamen;
 
-  /// HU06: comisión de la plataforma (8 %) y lo que recibe el vendedor.
+  /// HU17: si el vendedor tiene que pagar la inspección (los pedidos de
+  /// antes del Sprint 4 no la pagan).
+  final bool inspeccionRequerida;
+
+  /// HU17: el plan con el que se pagó, cuánto costó, cuándo y con qué.
+  final PlanInspeccion? inspeccionPlan;
+  final bool inspeccionExpress;
+  final double? inspeccionMonto;
+  final DateTime? inspeccionPagadaEn;
+  final String? inspeccionDetalle;
+
+  /// HU06: comisión de la plataforma (5 %) y lo que recibe el vendedor.
   /// Se calculan en el servidor cuando se libera el pago.
   final double? comision;
   final double? montoVendedor;
@@ -236,7 +262,32 @@ class Pedido {
   final String? referenciaReembolso;
 
   /// La comisión que se usará, aunque todavía no se haya liberado.
-  static const double tasaComision = 0.08;
+  /// HU17: bajó del 8 % al 5 % cuando el vendedor empezó a pagar la
+  /// inspección.
+  static const double tasaComision = ReglasPlan.tasaComision;
+
+  /// El plan de inspección de este pedido.
+  PlanInspeccion get planInspeccion => inspeccionPlan ?? equipo.plan;
+
+  bool get conExpress =>
+      inspeccionPagadaEn != null ? inspeccionExpress : equipo.express;
+
+  /// Lo que cuesta (o costó) la inspección. Cero si no la paga el vendedor.
+  double get costoInspeccion => !inspeccionRequerida
+      ? 0.0
+      : inspeccionMonto ?? planInspeccion.costo(monto, express: conExpress);
+
+  bool get inspeccionPagada => inspeccionPagadaEn != null;
+
+  /// HU17: el vendedor tiene que pagar la inspección antes de entregar.
+  bool get inspeccionPendiente =>
+      inspeccionRequerida &&
+      !inspeccionPagada &&
+      estado == EstadoPedido.pagoEnCustodia;
+
+  /// HU18: días que tiene el comprador para reclamar (7 con la Detallada).
+  /// Igual que `plazo_reclamo_de` en el servidor.
+  int get diasParaReclamar => planInspeccion.diasReclamo;
 
   /// El equipo no pasó la inspección (con o sin el reembolso ya hecho).
   bool get noPasoInspeccion =>
@@ -246,13 +297,19 @@ class Pedido {
   bool get fueReembolsado => estado == EstadoPedido.reembolsado;
 
   /// Si el equipo se rechaza no se cobra comisión (HU13).
-  double get comisionEstimada => noPasoInspeccion
-      ? 0.0
-      : comision ?? (monto * tasaComision * 100).round() / 100;
+  double get comisionEstimada => comisionEstimadaCon(tasaComision);
 
   /// Si el equipo se rechaza el vendedor no recibe nada (HU13).
-  double get recibeVendedor =>
-      noPasoInspeccion ? 0.0 : montoVendedor ?? monto - comisionEstimada;
+  double get recibeVendedor => recibeVendedorCon(tasaComision);
+
+  /// HU20: la comisión con la tasa del nivel del vendedor (5 % o 4 %).
+  /// Si ya se liberó, vale la que cobró el servidor.
+  double comisionEstimadaCon(double tasa) => noPasoInspeccion
+      ? 0.0
+      : comision ?? (monto * tasa * 100).round() / 100;
+
+  double recibeVendedorCon(double tasa) =>
+      noPasoInspeccion ? 0.0 : montoVendedor ?? monto - comisionEstimadaCon(tasa);
 
   /// HU13: lo que se le devuelve al comprador, siempre el 100 % del pago.
   double get montoADevolver => montoReembolsado ?? monto;

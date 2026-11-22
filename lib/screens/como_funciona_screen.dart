@@ -280,7 +280,7 @@ class _Beneficios extends StatelessWidget {
       'El comprador ya pagó antes de que envíes el equipo.',
       'Una inspección imparcial respalda tu equipo.',
       'Cobras automáticamente cuando el equipo se aprueba.',
-      'Solo pagas una comisión del 8 % cuando vendes.',
+      'Pagas la inspección al entregar y una comisión del 5 % si se aprueba.',
     ]);
 
     if (!ancha) {
@@ -320,13 +320,30 @@ class _Preguntas extends StatelessWidget {
       'Depende del equipo. En una laptop: encendido, pantalla, teclado, '
           'batería, puertos y chasis. En una consola: imagen por HDMI, '
           'controles, lectora y ventilación. En unos audífonos: sonido, '
-          'micrófono, botones y almohadillas. Cada falla queda con nota y foto.',
+          'micrófono, botones y almohadillas. Cada punto se califica del 1 al '
+          '4 (Malo, Regular, Bueno, Excelente) y cada falla queda con nota y '
+          'foto.',
     ),
     (
       '¿Cuánto cuesta usar ReUso Seguro?',
-      'Para el comprador, nada: paga el precio publicado y la inspección '
-          'está incluida. El vendedor paga una comisión del 8 % solo cuando '
-          'el equipo se vende y se aprueba.',
+      'Para el comprador, nada: paga el precio publicado. El vendedor paga '
+          'la inspección cuando entrega el equipo en el Hub (Básica: 4 % del '
+          'precio, entre \$5 y \$30; Detallada: 8 %, entre \$10 y \$60; '
+          'Express suma \$8) y una comisión del 5 % solo si el equipo se '
+          'aprueba (4 % si es un vendedor Confiable o Destacado). La '
+          'inspección no se devuelve si el equipo se rechaza.',
+    ),
+    (
+      '¿Qué significa «Confiable» junto al nombre de un vendedor?',
+      'Es su reputación, y sale de las inspecciones del Hub, no de reseñas: '
+          'al menos 3 ventas, el 90 % de sus equipos aprobados y ninguna '
+          'declaración inexacta reciente. «Destacado» además pide 10 ventas, '
+          'el 95 % aprobadas y entregar en el Hub en 2 días o menos.',
+    ),
+    (
+      '¿Qué tiene de más la inspección detallada?',
+      'Una observación escrita del inspector en cada punto, un sello en el '
+          'catálogo y 7 días para reclamar en vez de 3.',
     ),
     (
       '¿Qué pasa si el equipo no pasa la inspección?',

@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/plan_inspeccion.dart';
 import '../services/publicacion_service.dart';
+import '../services/reputacion_service.dart';
 import '../tema.dart';
 import '../widgets/avisos.dart';
 import '../widgets/barra_superior.dart';
 import '../widgets/pegatina.dart';
+import '../widgets/plan_widgets.dart';
 import '../widgets/pie_de_pagina.dart';
 import 'detalle_equipo_screen.dart';
 
@@ -15,6 +18,10 @@ import 'detalle_equipo_screen.dart';
 /// Todos los datos son obligatorios, incluidas al menos 3 fotos. Al tocar
 /// «Publicar equipo» las fotos se suben a Supabase Storage, el equipo se
 /// guarda en la tabla `equipos` y aparece de una vez en el catálogo.
+///
+/// Sprint 4: el vendedor también elige el plan de inspección que pagará al
+/// entregar (HU16 y HU17) y califica del 1 al 4 cómo está cada parte del
+/// equipo (HU19).
 class PublicarScreen extends StatefulWidget {
   const PublicarScreen({super.key});
 
@@ -35,6 +42,11 @@ class _PublicarScreenState extends State<PublicarScreen> {
   String? _condicion;
   final List<FotoElegida> _fotos = [];
 
+  PlanInspeccion _plan = PlanInspeccion.basica;
+  bool _express = false;
+  final Map<String, int> _autoevaluacion = {};
+  final Set<String> _sinParte = {};
+
   /// Se vuelve verdadero al primer intento de publicar: desde ahí se
   /// muestran los errores de todos los campos, también el de las fotos.
   bool _intento = false;
@@ -54,6 +66,20 @@ class _PublicarScreenState extends State<PublicarScreen> {
     for (final campo in [_titulo, _precio, _detalles, _descripcion]) {
       campo.addListener(_revisarCambios);
     }
+    // El resumen de cobro se recalcula con cada cambio del precio.
+    _precio.addListener(_alCambiarPrecio);
+    // HU20: si el vendedor es Confiable o Destacado, su comisión es del 4 %.
+    ReputacionService.instancia.mia().then((reputacion) {
+      if (mounted && reputacion != null) {
+        setState(() => _tasaComision = reputacion.tasaComision);
+      }
+    });
+  }
+
+  double _tasaComision = ReglasPlan.tasaComision;
+
+  void _alCambiarPrecio() {
+    if (mounted) setState(() {});
   }
 
   void _revisarCambios() {
@@ -75,6 +101,7 @@ class _PublicarScreenState extends State<PublicarScreen> {
       _fotos.isNotEmpty ||
       _categoria != null ||
       _condicion != null ||
+      _autoevaluacion.isNotEmpty ||
       [_titulo, _precio, _detalles, _descripcion]
           .any((campo) => campo.text.trim().isNotEmpty);
 
@@ -161,16 +188,18 @@ class _PublicarScreenState extends State<PublicarScreen> {
 
     final camposBien = _formulario.currentState?.validate() ?? false;
     final errorFotos = ReglasPublicacion.fotos(_fotos);
+    final errorAuto = _errorAutoevaluacion;
     setState(() {
       _intento = true;
       _error = null;
     });
 
-    if (!camposBien || errorFotos != null) {
+    if (!camposBien || errorFotos != null || errorAuto != null) {
       setState(() {
         _error = 'Falta completar algunos datos. Revisa lo que está marcado '
-            'en rojo: todos los campos y al menos '
-            '${ReglasPublicacion.minimoFotos} fotos son obligatorios.';
+            'en rojo: todos los campos, al menos '
+            '${ReglasPublicacion.minimoFotos} fotos y la calificación de '
+            'cada parte son obligatorios.';
       });
       return;
     }
@@ -186,6 +215,9 @@ class _PublicarScreenState extends State<PublicarScreen> {
           detallesEstado: _detalles.text,
           descripcion: _descripcion.text,
           fotos: List.unmodifiable(_fotos),
+          plan: _plan,
+          express: _express,
+          autoevaluacion: Map.unmodifiable(_autoevaluacion),
         ),
       );
       if (!mounted) return;
@@ -203,6 +235,13 @@ class _PublicarScreenState extends State<PublicarScreen> {
       });
     }
   }
+
+  String? get _errorAutoevaluacion => ReglasPublicacion.autoevaluacion(
+        _categoria,
+        _categoria == null
+            ? const {}
+            : ReglasPublicacion.autoevaluacionLimpia(_categoria!, _autoevaluacion),
+      );
 
   /// Si hay datos sin publicar, pregunta antes de salir.
   Future<void> _alIntentarSalir(bool yaSalio, Object? _) async {
@@ -306,7 +345,8 @@ class _PublicarScreenState extends State<PublicarScreen> {
       decoration: _decoracion(
         ejemplo: 'Ejemplo: 180',
         icono: Icons.attach_money,
-        ayuda: 'En dólares. La inspección del Hub está incluida.',
+        ayuda: 'En dólares. La inspección del Hub la pagas al entregar '
+            '(elige el plan más abajo).',
       ),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
@@ -480,6 +520,69 @@ class _PublicarScreenState extends State<PublicarScreen> {
                                         ),
                                         const SizedBox(height: 24),
                                         ..._campos(ancha),
+                                        const SizedBox(height: 24),
+                                        const _Etiqueta('Plan de inspección'),
+                                        SelectorPlan(
+                                          plan: _plan,
+                                          express: _express,
+                                          precio: ReglasPublicacion.precio(
+                                                    _precio.text,
+                                                  ) ==
+                                                  null
+                                              ? ReglasPublicacion.leerPrecio(
+                                                  _precio.text,
+                                                )
+                                              : null,
+                                          habilitado: !_publicando,
+                                          alCambiarPlan: (plan) =>
+                                              setState(() => _plan = plan),
+                                          alCambiarExpress: (valor) =>
+                                              setState(() => _express = valor),
+                                        ),
+                                        if (ReglasPublicacion.precio(
+                                              _precio.text,
+                                            ) ==
+                                            null) ...[
+                                          const SizedBox(height: 12),
+                                          ResumenCobro(
+                                            precio: ReglasPublicacion.leerPrecio(
+                                              _precio.text,
+                                            )!,
+                                            plan: _plan,
+                                            express: _express,
+                                            tasaComision: _tasaComision,
+                                          ),
+                                        ],
+                                        const SizedBox(height: 24),
+                                        const _Etiqueta('¿Cómo está cada parte?'),
+                                        if (_categoria == null)
+                                          Text(
+                                            'Elige primero el tipo de equipo '
+                                            'para ver qué partes calificar.',
+                                            style: Tipos.pequeno.copyWith(
+                                              fontSize: 13.5,
+                                            ),
+                                          )
+                                        else
+                                          AutoevaluacionVendedor(
+                                            categoria: _categoria!,
+                                            notas: _autoevaluacion,
+                                            sinParte: _sinParte,
+                                            habilitado: !_publicando,
+                                            error: _intento
+                                                ? _errorAutoevaluacion
+                                                : null,
+                                            alCalificar: (clave, nota) =>
+                                                setState(() {
+                                              _sinParte.remove(clave);
+                                              _autoevaluacion[clave] = nota.valor;
+                                            }),
+                                            alMarcarSinParte: (clave) =>
+                                                setState(() {
+                                              _autoevaluacion.remove(clave);
+                                              _sinParte.add(clave);
+                                            }),
+                                          ),
                                         const SizedBox(height: 20),
                                         const _Mensaje(
                                           icono: Icons.verified_user_outlined,
@@ -490,7 +593,8 @@ class _PublicarScreenState extends State<PublicarScreen> {
                                               'reciba, el inspector técnico del '
                                               'Hub revisará el equipo y lo '
                                               'comparará con lo que declares '
-                                              'aquí. Si coincide, cobras.',
+                                              'aquí, parte por parte. Si '
+                                              'coincide, cobras.',
                                         ),
                                         if (_error != null) ...[
                                           const SizedBox(height: 16),

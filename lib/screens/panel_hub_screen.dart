@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../formato.dart';
 import '../models/pedido.dart';
+import '../models/plan_inspeccion.dart';
 import '../models/reclamo.dart';
 import '../services/inspeccion_service.dart';
 import '../services/publicacion_service.dart';
@@ -13,6 +14,7 @@ import '../widgets/navegacion.dart';
 import '../widgets/pagina_base.dart';
 import '../widgets/pedido_widgets.dart';
 import '../widgets/pegatina.dart';
+import '../widgets/plan_widgets.dart';
 import '../widgets/dictamen_widgets.dart';
 import 'dictamen_screen.dart';
 import 'inspeccion_screen.dart';
@@ -187,12 +189,15 @@ class _PanelHubScreenState extends State<PanelHubScreen> {
                     titulo: '1. Por recibir',
                     vacio: 'No hay equipos en camino al Hub.',
                     items: porRecibir,
-                    accion: (item) => BotonPegatina(
-                      texto: 'Registrar llegada',
-                      icono: Icons.move_to_inbox_outlined,
-                      principal: false,
-                      alTocar: () => _recibir(item.pedido),
-                    ),
+                    // HU17: sin la inspección pagada no se recibe el equipo.
+                    accion: (item) => item.pedido.inspeccionPendiente
+                        ? const _InspeccionSinPagar()
+                        : BotonPegatina(
+                            texto: 'Registrar llegada',
+                            icono: Icons.move_to_inbox_outlined,
+                            principal: false,
+                            alTocar: () => _recibir(item.pedido),
+                          ),
                   ),
                   const SizedBox(height: 28),
                   _Grupo(
@@ -374,6 +379,36 @@ class _TarjetaHub extends StatelessWidget {
           ),
           if (pagadoEn != null)
             Text('Pagado el ${formatearFecha(pagadoEn)}', style: Tipos.pequeno),
+          // HU16: qué plan pagó el vendedor (la Detallada pide una
+          // observación en cada punto; la Express va primero).
+          if (pedido.inspeccionRequerida)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  if (pedido.planInspeccion == PlanInspeccion.detallada)
+                    const SelloDetallada(compacto: true)
+                  else
+                    const Text('Inspección básica', style: Tipos.pequeno),
+                  if (pedido.conExpress)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.bolt_outlined, size: 16, color: ColoresApp.tinta),
+                        Text(
+                          'Express: menos de 24 h',
+                          style: Tipos.pequeno.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: ColoresApp.tinta,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
           // HU04: el vendedor avisó «Ya entregué el equipo».
           if (pedido.esperandoAlHub)
             Padding(
@@ -444,6 +479,41 @@ class _TarjetaHub extends StatelessWidget {
                   accion,
                 ],
               ),
+      ),
+    );
+  }
+}
+
+/// HU17: el vendedor todavía no pagó la inspección, así que el equipo no
+/// se puede recibir.
+class _InspeccionSinPagar extends StatelessWidget {
+  const _InspeccionSinPagar();
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'El vendedor la paga al avisar que entregó el equipo.',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF1D6),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF8A5A00)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock_clock_outlined, size: 18, color: Color(0xFF8A5A00)),
+            const SizedBox(width: 6),
+            Text(
+              'Inspección sin pagar',
+              style: Tipos.pequeno.copyWith(
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF8A5A00),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -5,13 +5,15 @@ double _dinero(Object? valor) => (valor as num?)?.toDouble() ?? 0;
 DateTime? _fecha(Object? valor) =>
     valor is String ? DateTime.parse(valor).toLocal() : null;
 
-/// Los 4 totales de la bóveda (HU09, escenario 1).
+/// Los totales de la bóveda (HU09, escenario 1) y lo cobrado por
+/// inspecciones (HU17).
 class TotalesBoveda {
   const TotalesBoveda({
     this.enCustodia = 0,
     this.liberado = 0,
     this.reembolsado = 0,
     this.comisiones = 0,
+    this.inspecciones = 0,
   });
 
   factory TotalesBoveda.desdeJson(Map<String, dynamic>? json) => TotalesBoveda(
@@ -19,6 +21,7 @@ class TotalesBoveda {
         liberado: _dinero(json?['liberado']),
         reembolsado: _dinero(json?['reembolsado']),
         comisiones: _dinero(json?['comisiones']),
+        inspecciones: _dinero(json?['inspecciones']),
       );
 
   /// Lo que hay retenido ahora mismo.
@@ -30,8 +33,13 @@ class TotalesBoveda {
   /// Lo que se les devolvió a los compradores.
   final double reembolsado;
 
-  /// Lo que ganó la plataforma (8 % de cada venta aprobada).
+  /// Lo que ganó la plataforma (5 % de cada venta aprobada; las ventas de
+  /// antes del Sprint 4 pagaron 8 %).
   final double comisiones;
+
+  /// HU17: lo que pagaron los vendedores por las inspecciones. Ese dinero
+  /// no pasa por la custodia, por eso no entra en [totalIngresado].
+  final double inspecciones;
 
   /// Todo el dinero que entró alguna vez a la bóveda.
   double get totalIngresado => enCustodia + liberado + reembolsado + comisiones;
@@ -114,6 +122,26 @@ class LiberacionPendiente {
   String get codigo => 'P-$numero';
 }
 
+/// HU19: un vendedor con declaraciones inexactas (para el administrador).
+class DeclaracionesVendedor {
+  const DeclaracionesVendedor({
+    required this.vendedor,
+    required this.cuantas,
+    this.ultima,
+  });
+
+  factory DeclaracionesVendedor.desdeJson(Map<String, dynamic> json) =>
+      DeclaracionesVendedor(
+        vendedor: json['vendedor'] as String? ?? 'Vendedor',
+        cuantas: (json['cuantas'] as num?)?.toInt() ?? 0,
+        ultima: _fecha(json['ultima']),
+      );
+
+  final String vendedor;
+  final int cuantas;
+  final DateTime? ultima;
+}
+
 /// Un descuadre que quedó registrado antes.
 class DescuadreRegistrado {
   const DescuadreRegistrado({
@@ -145,6 +173,7 @@ class EstadoBoveda {
     this.porEstado = const {},
     this.liberacionesPendientes = const [],
     this.descuadresRegistrados = const [],
+    this.declaracionesInexactas = const [],
   });
 
   factory EstadoBoveda.desdeJson(Map<String, dynamic> json) {
@@ -168,6 +197,10 @@ class EstadoBoveda {
       descuadresRegistrados: [
         for (final r in lista('descuadres_registrados')) DescuadreRegistrado.desdeJson(r),
       ],
+      declaracionesInexactas: [
+        for (final d in lista('declaraciones_inexactas'))
+          DeclaracionesVendedor.desdeJson(d),
+      ],
     );
   }
 
@@ -179,6 +212,9 @@ class EstadoBoveda {
   final Map<EstadoPedido, int> porEstado;
   final List<LiberacionPendiente> liberacionesPendientes;
   final List<DescuadreRegistrado> descuadresRegistrados;
+
+  /// HU19: vendedores con declaraciones inexactas, el que más tiene primero.
+  final List<DeclaracionesVendedor> declaracionesInexactas;
 
   /// Todavía no se ha pagado ningún pedido.
   bool get vacia => totales.totalIngresado == 0 && porEstado.isEmpty;

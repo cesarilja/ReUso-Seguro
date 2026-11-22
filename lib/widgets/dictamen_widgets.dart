@@ -136,6 +136,8 @@ class _LineaPunto extends StatelessWidget {
       null => (Icons.help_outline, ColoresApp.pizarra, 'Sin revisar'),
     };
     final evidencias = revision?.evidencias ?? const <String>[];
+    final calificacion = revision?.calificacion;
+    final nota = revision?.nota.trim() ?? '';
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -149,15 +151,19 @@ class _LineaPunto extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${punto.nombre}: $texto',
+                  calificacion == null
+                      ? '${punto.nombre}: $texto'
+                      : '${punto.nombre}: ${calificacion.etiqueta}',
                   style: Tipos.pequeno.copyWith(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: ColoresApp.tinta,
                   ),
                 ),
+                // HU15: la nota de la falla o la observación (Detallada).
+                if (nota.isNotEmpty && resultado != ResultadoPunto.noAplica)
+                  Text(nota, style: Tipos.pequeno),
                 if (revision?.tieneFalla ?? false) ...[
-                  Text(revision!.nota, style: Tipos.pequeno),
                   if (evidencias.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Wrap(

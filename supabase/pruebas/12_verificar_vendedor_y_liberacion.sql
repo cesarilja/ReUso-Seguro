@@ -106,8 +106,10 @@ begin
     v_esperados := v_esperados || 'pago_liberado'::text;
     v_obtenidos := v_obtenidos || v_pedido.estado;
 
-    v_pruebas := v_pruebas || 'CP-L5 · Recibe el monto menos el 8 %'::text;
-    v_esperados := v_esperados || '184.00'::text;
+    -- La comisión es del 5 %, o del 4 % si el vendedor es Confiable o
+    -- Destacado (HU20, supabase/16_reputacion.sql).
+    v_pruebas := v_pruebas || 'CP-L5 · Recibe el monto menos la comisión de su nivel'::text;
+    v_esperados := v_esperados || (200 - round(200 * public.tasa_comision_de(v_cuentas[1]), 2))::text;
     v_obtenidos := v_obtenidos || v_pedido.monto_vendedor::text;
 
     v_pruebas := v_pruebas || 'CP-L6 · Se cuentan los intentos de liberación'::text;

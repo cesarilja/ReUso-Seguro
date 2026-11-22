@@ -357,7 +357,8 @@ class _SinCompras extends StatelessWidget {
 }
 
 /// HU05: el comprador confirma que recibió su equipo (con confirmación,
-/// heurística 5). Desde ahí corren los 3 días para reclamar.
+/// heurística 5). Desde ahí corren los días para reclamar (3, o 7 con la
+/// inspección detallada).
 Future<void> _confirmarRecibido(BuildContext context, Pedido pedido) async {
   final seguro = await showDialog<bool>(
     context: context,
@@ -365,7 +366,7 @@ Future<void> _confirmarRecibido(BuildContext context, Pedido pedido) async {
       title: const Text('¿Ya tienes el equipo en tus manos?'),
       content: Text(
         'Confírmalo solo si ya recibiste «${pedido.equipo.titulo}». Desde ahora '
-        'tendrás ${ReglasReclamo.plazoDias} días para reclamar si algo no está bien.',
+        'tendrás ${ReglasReclamo.plazoDe(pedido)} días para reclamar si algo no está bien.',
       ),
       actions: [
         TextButton(

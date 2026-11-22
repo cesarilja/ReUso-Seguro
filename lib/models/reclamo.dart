@@ -75,6 +75,8 @@ enum SituacionReclamo {
 class ReglasReclamo {
   const ReglasReclamo._();
 
+  /// Plazo de la inspección Básica. Con la Detallada son 7 días (HU18):
+  /// usa [plazoDe] para el de un pedido.
   static const int plazoDias = 3;
   static const int minimoDescripcion = 20;
   static const int minimoFotosRecepcion = 2;
@@ -101,9 +103,12 @@ class ReglasReclamo {
     return null;
   }
 
+  /// HU18: los días que tiene el comprador de este pedido.
+  static int plazoDe(Pedido pedido) => pedido.diasParaReclamar;
+
   /// Hasta cuándo puede reclamar, o null si todavía no confirmó.
   static DateTime? venceEn(Pedido pedido) =>
-      pedido.recibidoCompradorEn?.add(const Duration(days: plazoDias));
+      pedido.recibidoCompradorEn?.add(Duration(days: plazoDe(pedido)));
 
   static SituacionReclamo situacion(Pedido pedido, [DateTime? ahora]) {
     if (pedido.reclamo != null) return SituacionReclamo.reclamado;

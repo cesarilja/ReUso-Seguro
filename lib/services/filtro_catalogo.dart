@@ -11,7 +11,8 @@ enum OrdenCatalogo {
   final String nombre;
 }
 
-/// Búsqueda, categoría, disponibilidad y orden del catálogo («control»).
+/// Búsqueda, categoría, disponibilidad, plan, express, rango de precio y orden
+/// del catálogo («control»).
 ///
 /// Es inmutable: cada cambio crea un filtro nuevo con [copiar]. La lógica
 /// vive aquí y no en la pantalla, para respetar la arquitectura por capas.
@@ -20,6 +21,10 @@ class FiltroCatalogo {
     this.texto = '',
     this.categoria,
     this.soloDisponibles = false,
+    this.soloDetallada = false,
+    this.soloExpress = false,
+    this.precioMin,
+    this.precioMax,
     this.orden = OrdenCatalogo.recientes,
   });
 
@@ -28,23 +33,51 @@ class FiltroCatalogo {
   /// null = todas las categorías.
   final String? categoria;
   final bool soloDisponibles;
+
+  /// HU16: solo equipos con inspección detallada.
+  final bool soloDetallada;
+
+  /// HU16: solo equipos con inspección Express (< 24 h).
+  final bool soloExpress;
+
+  /// Rango de precio opcional en dólares.
+  final double? precioMin;
+  final double? precioMax;
+
   final OrdenCatalogo orden;
 
-  /// Si la persona cambió algo (para mostrar «Limpiar filtros»).
+  /// Si la persona cambió algo (para mostrar «Limpiar filtros» y ocultar
+  /// las vitrinas de portada mientras busca).
   bool get activo =>
-      texto.trim().isNotEmpty || categoria != null || soloDisponibles;
+      texto.trim().isNotEmpty ||
+      categoria != null ||
+      soloDisponibles ||
+      soloDetallada ||
+      soloExpress ||
+      precioMin != null ||
+      precioMax != null;
 
   FiltroCatalogo copiar({
     String? texto,
     String? categoria,
     bool quitarCategoria = false,
     bool? soloDisponibles,
+    bool? soloDetallada,
+    bool? soloExpress,
+    double? precioMin,
+    bool quitarPrecioMin = false,
+    double? precioMax,
+    bool quitarPrecioMax = false,
     OrdenCatalogo? orden,
   }) {
     return FiltroCatalogo(
       texto: texto ?? this.texto,
       categoria: quitarCategoria ? null : (categoria ?? this.categoria),
       soloDisponibles: soloDisponibles ?? this.soloDisponibles,
+      soloDetallada: soloDetallada ?? this.soloDetallada,
+      soloExpress: soloExpress ?? this.soloExpress,
+      precioMin: quitarPrecioMin ? null : (precioMin ?? this.precioMin),
+      precioMax: quitarPrecioMax ? null : (precioMax ?? this.precioMax),
       orden: orden ?? this.orden,
     );
   }
@@ -72,6 +105,10 @@ class FiltroCatalogo {
     final resultado = equipos.where((e) {
       if (categoria != null && e.categoria != categoria) return false;
       if (soloDisponibles && !e.estaDisponible) return false;
+      if (soloDetallada && !e.inspeccionDetallada) return false;
+      if (soloExpress && !e.express) return false;
+      if (precioMin != null && e.precio < precioMin!) return false;
+      if (precioMax != null && e.precio > precioMax!) return false;
       if (palabras.isEmpty) return true;
       final donde = _normalizar(
         '${e.titulo} ${e.descripcion} ${e.categoria ?? ''} ${e.estadoDeclarado}',

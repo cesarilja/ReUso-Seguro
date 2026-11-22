@@ -22,6 +22,8 @@ class Dictamen {
     required this.motivo,
     required this.emitidoEn,
     this.inspectorNombre,
+    this.declaracionInexacta = false,
+    this.puntosInexactos = const [],
   });
 
   factory Dictamen.desdeFila(Map<String, dynamic> fila) => Dictamen(
@@ -30,6 +32,10 @@ class Dictamen {
         motivo: (fila['motivo'] as String?) ?? '',
         emitidoEn: DateTime.parse(fila['creado_en'] as String).toLocal(),
         inspectorNombre: fila['inspector_nombre'] as String?,
+        declaracionInexacta: fila['declaracion_inexacta'] as bool? ?? false,
+        puntosInexactos: ((fila['puntos_inexactos'] as List?) ?? const [])
+            .whereType<String>()
+            .toList(growable: false),
       );
 
   /// La relación puede llegar como objeto o como lista, según Supabase.
@@ -50,6 +56,13 @@ class Dictamen {
 
   /// HU03: quién firmó el dictamen (lo copia el servidor).
   final String? inspectorNombre;
+
+  /// HU19: el vendedor calificó 2 o más puntos al menos 2 notas por encima
+  /// de lo que encontró el inspector. Lo marca el servidor al dictaminar.
+  final bool declaracionInexacta;
+
+  /// HU19: las claves de esos puntos.
+  final List<String> puntosInexactos;
 
   String get firmadoPor => inspectorNombre ?? 'Inspector técnico del Hub';
 

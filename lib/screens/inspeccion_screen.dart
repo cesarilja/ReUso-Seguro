@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/escala.dart';
 import '../models/inspeccion.dart';
 import '../models/pedido.dart';
+import '../models/plan_inspeccion.dart';
 import '../services/inspeccion_service.dart';
 import '../services/publicacion_service.dart';
 import '../tema.dart';
@@ -11,12 +13,15 @@ import '../widgets/imagen_equipo.dart';
 import '../widgets/pagina_base.dart';
 import '../widgets/pedido_widgets.dart';
 import '../widgets/pegatina.dart';
+import '../widgets/plan_widgets.dart';
 
 /// Checklist digital de inspección de un equipo (HU07).
 ///
-/// El inspector marca cada punto como «Funciona bien» o «Tiene una falla».
-/// Cada falla pide una nota y al menos una foto de evidencia. No se puede
-/// guardar con puntos sin marcar, y arriba siempre se ve cuántos lleva.
+/// HU15: el inspector califica cada punto del 1 al 4 (4 Excelente,
+/// 3 Bueno, 2 Regular, 1 Malo) o «No aplica» en los opcionales. Una nota de
+/// 1 o 2 es una falla y pide una nota y al menos una foto de evidencia. En la
+/// inspección Detallada (HU16) cada punto lleva además una observación.
+/// Arriba se ve cuántos puntos van listos y el puntaje general.
 class InspeccionScreen extends StatefulWidget {
   const InspeccionScreen({super.key, required this.pedido, this.inspeccion});
 
@@ -36,6 +41,9 @@ class _InspeccionScreenState extends State<InspeccionScreen> {
   /// unos audífonos que una laptop).
   late final List<PuntoChecklist> _checklist =
       PuntoChecklist.para(widget.pedido.equipo.categoria);
+
+  /// HU16: el plan que pagó el vendedor (igual que en el servidor).
+  late final PlanInspeccion _plan = widget.pedido.equipo.plan;
   late final Map<String, BorradorPunto> _borradores = {
     for (final punto in _checklist)
       punto.clave: BorradorPunto.desde(widget.inspeccion?.puntos[punto.clave]),
@@ -58,12 +66,25 @@ class _InspeccionScreenState extends State<InspeccionScreen> {
     super.dispose();
   }
 
-  int get _revisados =>
-      _borradores.values.where((b) => ReglasInspeccion.punto(b) == null).length;
+  int get _revisados => _borradores.values
+      .where((b) => ReglasInspeccion.punto(b, plan: _plan) == null)
+      .length;
 
-  void _marcar(PuntoChecklist punto, ResultadoPunto resultado) {
+  Iterable<Calificacion?> get _notasDadas => _borradores.values
+      .where((b) => !b.noAplica)
+      .map((b) => b.calificacion);
+
+  void _calificar(PuntoChecklist punto, Calificacion nota) {
     setState(() {
-      _borradores[punto.clave]!.resultado = resultado;
+      _borradores[punto.clave]!.calificar(nota);
+      _huboCambios = true;
+      _error = null;
+    });
+  }
+
+  void _marcarNoAplica(PuntoChecklist punto) {
+    setState(() {
+      _borradores[punto.clave]!.marcarNoAplica();
       _huboCambios = true;
       _error = null;
     });
@@ -119,7 +140,8 @@ class _InspeccionScreenState extends State<InspeccionScreen> {
     });
 
     final pendientes = _checklist
-        .where((p) => ReglasInspeccion.punto(_borradores[p.clave]!) != null)
+        .where((p) =>
+            ReglasInspeccion.punto(_borradores[p.clave]!, plan: _plan) != null)
         .map((p) => p.nombre)
         .toList();
     if (pendientes.isNotEmpty) {
@@ -190,6 +212,8 @@ class _InspeccionScreenState extends State<InspeccionScreen> {
     final equipo = pedido.equipo;
     final total = _checklist.length;
     final revisados = _revisados;
+    final puntaje = ReglasEscala.puntaje(_notasDadas);
+    final sugerirRechazo = ReglasEscala.sugerirRechazo(_notasDadas);
 
     return PopScope(
       canPop: !_huboCambios && !_guardando,
@@ -209,9 +233,38 @@ class _InspeccionScreenState extends State<InspeccionScreen> {
             Text('Checklist · Pedido ${pedido.codigo}', style: Tipos.titulo),
             const SizedBox(height: 4),
             Text(
-              'Checklist de ${_tipoDeEquipo(equipo.categoria)}: $total puntos.',
+              'Checklist de ${_tipoDeEquipo(equipo.categoria)}: $total puntos. '
+              'Califica cada uno del 1 al 4.',
               style: Tipos.cuerpo,
             ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (_plan == PlanInspeccion.detallada)
+                  const SelloDetallada()
+                else
+                  const Text('Inspección básica', style: Tipos.pequeno),
+                if (equipo.express)
+                  Text(
+                    'Express: revisar en menos de 24 h',
+                    style: Tipos.pequeno.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: ColoresApp.tinta,
+                    ),
+                  ),
+              ],
+            ),
+            if (_plan == PlanInspeccion.detallada) ...[
+              const SizedBox(height: 6),
+              const Text(
+                'El vendedor pagó la inspección detallada: escribe una '
+                'observación en cada punto que califiques.',
+                style: Tipos.pequeno,
+              ),
+            ],
             const SizedBox(height: 18),
             // Lo que declaró el vendedor, para compararlo con el equipo.
             Pegatina(
@@ -278,17 +331,44 @@ class _InspeccionScreenState extends State<InspeccionScreen> {
                     : ColoresApp.orquidea,
               ),
             ),
+            if (puntaje != null) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  EtiquetaPuntaje(puntaje: puntaje),
+                  if (sugerirRechazo)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.info_outline, size: 18, color: _rojo),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Sugerencia: rechazar (hay un punto en 1 o el '
+                          'promedio es menor que 2,5).',
+                          style: Tipos.pequeno.copyWith(color: _rojo),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 20),
             for (final punto in _checklist) ...[
               _TarjetaPunto(
                 punto: punto,
                 borrador: _borradores[punto.clave]!,
                 nota: _notas[punto.clave]!,
+                plan: _plan,
+                declarado: Calificacion.desde(equipo.autoevaluacion[punto.clave]),
                 error: _intento
-                    ? ReglasInspeccion.punto(_borradores[punto.clave]!)
+                    ? ReglasInspeccion.punto(_borradores[punto.clave]!, plan: _plan)
                     : null,
                 habilitado: !_guardando,
-                alMarcar: (resultado) => _marcar(punto, resultado),
+                alCalificar: (nota) => _calificar(punto, nota),
+                alNoAplica: () => _marcarNoAplica(punto),
                 alEscribir: (texto) {
                   _borradores[punto.clave]!.nota = texto;
                   setState(() => _huboCambios = true);
@@ -356,16 +436,19 @@ class _InspeccionScreenState extends State<InspeccionScreen> {
   }
 }
 
-/// Un punto del checklist: dos botones grandes y, si hay falla, la nota y
-/// las fotos de evidencia.
+/// Un punto del checklist: la nota del 1 al 4 y, si hay falla, la
+/// descripción y las fotos de evidencia.
 class _TarjetaPunto extends StatelessWidget {
   const _TarjetaPunto({
     required this.punto,
     required this.borrador,
     required this.nota,
+    required this.plan,
+    required this.declarado,
     required this.error,
     required this.habilitado,
-    required this.alMarcar,
+    required this.alCalificar,
+    required this.alNoAplica,
     required this.alEscribir,
     required this.alAgregarFotos,
     required this.alQuitarNueva,
@@ -378,9 +461,14 @@ class _TarjetaPunto extends StatelessWidget {
   final PuntoChecklist punto;
   final BorradorPunto borrador;
   final TextEditingController nota;
+  final PlanInspeccion plan;
+
+  /// HU19: cómo calificó el vendedor este punto al publicar.
+  final Calificacion? declarado;
   final String? error;
   final bool habilitado;
-  final ValueChanged<ResultadoPunto> alMarcar;
+  final ValueChanged<Calificacion> alCalificar;
+  final VoidCallback alNoAplica;
   final ValueChanged<String> alEscribir;
   final VoidCallback alAgregarFotos;
   final ValueChanged<int> alQuitarNueva;
@@ -388,7 +476,9 @@ class _TarjetaPunto extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final listo = ReglasInspeccion.punto(borrador) == null;
+    final listo = ReglasInspeccion.punto(borrador, plan: plan) == null;
+    final pideObservacion =
+        borrador.tieneFalla || (plan == PlanInspeccion.detallada && borrador.revisado && !borrador.noAplica);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -416,40 +506,26 @@ class _TarjetaPunto extends StatelessWidget {
           const SizedBox(height: 4),
           Text(punto.queRevisar, style: Tipos.pequeno),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              _Opcion(
-                texto: 'Funciona bien',
-                icono: Icons.check,
-                color: _verde,
-                elegida: borrador.resultado == ResultadoPunto.ok,
-                alTocar: habilitado ? () => alMarcar(ResultadoPunto.ok) : null,
-              ),
-              _Opcion(
-                texto: 'Tiene una falla',
-                icono: Icons.warning_amber_rounded,
-                color: _rojo,
-                elegida: borrador.resultado == ResultadoPunto.falla,
-                alTocar:
-                    habilitado ? () => alMarcar(ResultadoPunto.falla) : null,
-              ),
-              // Solo en puntos que algunos equipos no tienen (por ejemplo,
-              // la lectora de discos de una consola digital).
-              if (punto.opcional)
-                _Opcion(
-                  texto: 'No aplica',
-                  icono: Icons.remove_circle_outline,
-                  color: ColoresApp.pizarra,
-                  elegida: borrador.resultado == ResultadoPunto.noAplica,
-                  alTocar: habilitado
-                      ? () => alMarcar(ResultadoPunto.noAplica)
-                      : null,
-                ),
-            ],
+          if (declarado != null) ...[
+            Row(
+              children: [
+                const Text('El vendedor dijo: ', style: Tipos.pequeno),
+                EtiquetaCalificacion(calificacion: declarado!),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ],
+          SelectorCalificacion(
+            valor: borrador.calificacion,
+            noAplica: borrador.noAplica,
+            // Solo en puntos que algunos equipos no tienen (por ejemplo,
+            // la lectora de discos de una consola digital).
+            permiteNoAplica: punto.opcional,
+            habilitado: habilitado,
+            alElegir: alCalificar,
+            alElegirNoAplica: alNoAplica,
           ),
-          if (borrador.tieneFalla) ...[
+          if (pideObservacion) ...[
             const SizedBox(height: 14),
             TextField(
               controller: nota,
@@ -459,14 +535,20 @@ class _TarjetaPunto extends StatelessWidget {
               maxLength: 300,
               onChanged: alEscribir,
               decoration: InputDecoration(
-                labelText: '¿Qué falla tiene?',
-                hintText: 'Ejemplo: 3 píxeles muertos en la esquina superior',
+                labelText: borrador.tieneFalla
+                    ? '¿Qué falla tiene?'
+                    : 'Observación del inspector',
+                hintText: borrador.tieneFalla
+                    ? 'Ejemplo: 3 píxeles muertos en la esquina superior'
+                    : 'Ejemplo: brillo parejo, sin rayones visibles',
                 hintStyle: const TextStyle(color: Color(0xFF6B7088)),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
+          ],
+          if (borrador.tieneFalla) ...[
             const SizedBox(height: 6),
             Text(
               'Fotos de evidencia (${borrador.totalFotos} de '
@@ -538,56 +620,6 @@ class _TarjetaPunto extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _Opcion extends StatelessWidget {
-  const _Opcion({
-    required this.texto,
-    required this.icono,
-    required this.color,
-    required this.elegida,
-    required this.alTocar,
-  });
-
-  final String texto;
-  final IconData icono;
-  final Color color;
-  final bool elegida;
-  final VoidCallback? alTocar;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: elegida,
-      child: InkWell(
-        onTap: alTocar,
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: elegida ? color : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: elegida ? color : ColoresApp.tinta, width: 2),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icono, size: 20, color: elegida ? Colors.white : color),
-              const SizedBox(width: 8),
-              Text(
-                texto,
-                style: Tipos.boton.copyWith(
-                  color: elegida ? Colors.white : ColoresApp.tinta,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

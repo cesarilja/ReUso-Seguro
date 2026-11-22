@@ -2,9 +2,28 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/pedido.dart';
+import '../models/plan_inspeccion.dart';
 import '../models/venta.dart';
+import 'pasarela.dart';
 import 'pedido_service.dart';
 import 'sesion_service.dart';
+
+/// HU17: lo que respondió ReUso Pay al cobrar la inspección.
+class ResultadoPagoInspeccion {
+  const ResultadoPagoInspeccion({
+    required this.respuesta,
+    required this.monto,
+    required this.pedido,
+  });
+
+  final RespuestaBanco respuesta;
+  final double monto;
+
+  /// La venta como quedó (si se aprobó, ya marcada como entregada).
+  final Pedido pedido;
+
+  bool get aprobado => respuesta == RespuestaBanco.aprobado;
+}
 
 /// Todo lo del vendedor después de vender (HU04 y HU06), patrón Singleton.
 ///
@@ -14,7 +33,8 @@ import 'sesion_service.dart';
 ///   los muestra AvisosService.
 /// - Llama a las funciones del servidor: marcar_entregado,
 ///   marcar_ventas_vistas, guardar_cuenta_cobro y reintentar_liberacion
-///   (supabase/12_vendedor_y_liberacion.sql). El navegador no decide nada.
+///   (supabase/12_vendedor_y_liberacion.sql), y pagar_inspeccion (HU17,
+///   supabase/15_planes_y_escala.sql). El navegador no decide nada.
 class VendedorService extends ChangeNotifier {
   VendedorService._();
 
@@ -77,6 +97,48 @@ class VendedorService extends ChangeNotifier {
     final fila = await _llamar('marcar_entregado', {'p_pedido': venta.id});
     PedidoService.instancia.avisarCambio();
     return Pedido.desdeFila(fila, venta.equipo);
+  }
+
+  /// HU17: el vendedor paga la inspección con ReUso Pay (SIMULADO) al
+  /// avisar que entregó el equipo. Si el banco lo aprueba, el servidor
+  /// también marca la entrega. [metodo] es `tarjeta` o `pago_movil`.
+  Future<ResultadoPagoInspeccion> pagarInspeccion(
+    Pedido venta, {
+    required String metodo,
+    required Map<String, dynamic> datos,
+  }) async {
+    final respuesta = await _llamar('pagar_inspeccion', {
+      'p_pedido': venta.id,
+      'p_metodo': metodo,
+      'p_datos': datos,
+    });
+    final fila = respuesta['pedido'];
+    final pedido = fila is Map<String, dynamic>
+        ? Pedido.desdeFila(fila, venta.equipo)
+        : venta;
+    final aprobado = respuesta['aprobado'] == true;
+    if (aprobado) PedidoService.instancia.avisarCambio();
+    return ResultadoPagoInspeccion(
+      respuesta: aprobado
+          ? RespuestaBanco.aprobado
+          : RespuestaBanco.desde(respuesta['codigo'] as String?),
+      monto: (respuesta['monto'] as num?)?.toDouble() ?? venta.costoInspeccion,
+      pedido: pedido,
+    );
+  }
+
+  /// HU16, escenario 5: cambiar el plan de un equipo que no se ha vendido.
+  /// El servidor revisa que sea del vendedor y que siga disponible.
+  Future<void> cambiarPlan(
+    String equipoId, {
+    required PlanInspeccion plan,
+    required bool express,
+  }) async {
+    await _llamar('cambiar_plan_inspeccion', {
+      'p_equipo': equipoId,
+      'p_plan': plan.clave,
+      'p_express': express,
+    });
   }
 
   /// HU06: pide otra vez la transferencia de una liberación pendiente.
@@ -159,8 +221,19 @@ class VendedorService extends ChangeNotifier {
     if (mensaje.contains('NO_VENDEDOR')) {
       return 'Solo el vendedor de este equipo puede hacer esto.';
     }
+    if (mensaje.contains('INSPECCION_SIN_PAGAR')) {
+      return 'Primero paga la inspección: se cobra al avisar que entregaste '
+          'el equipo.';
+    }
     if (mensaje.contains('ESTADO')) {
       return 'Esta venta cambió de estado. Actualiza la página.';
+    }
+    if (mensaje.contains('NO_SE_PUEDE')) {
+      return 'Solo puedes cambiar el plan de un equipo tuyo que todavía no se '
+          'ha vendido.';
+    }
+    if (mensaje.contains('METODO')) {
+      return 'Elige cómo pagar la inspección: tarjeta o Pago Móvil.';
     }
     if (mensaje.contains('TELEFONO')) {
       return 'Escribe un teléfono móvil completo, por ejemplo 0414 123 4567.';

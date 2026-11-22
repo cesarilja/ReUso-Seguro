@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/dictamen.dart';
+import '../models/escala.dart';
+import '../models/inspeccion.dart';
 import '../models/pedido.dart';
 import '../services/inspeccion_service.dart';
 import '../tema.dart';
@@ -10,6 +12,7 @@ import '../widgets/imagen_equipo.dart';
 import '../widgets/pagina_base.dart';
 import '../widgets/pedido_widgets.dart';
 import '../widgets/pegatina.dart';
+import '../widgets/plan_widgets.dart';
 
 /// El inspector técnico aprueba o rechaza el equipo (HU08).
 ///
@@ -120,6 +123,43 @@ class _DictamenScreenState extends State<DictamenScreen> {
     }
   }
 
+  /// HU15 y HU19: el puntaje, la sugerencia y si lo declarado coincide.
+  /// La decisión sigue siendo del inspector.
+  List<Widget> _ayudaEscala(
+    Inspeccion inspeccion,
+    Map<String, int> declarado,
+    String? categoria,
+  ) {
+    final notas = inspeccion.puntos.values.map((p) => p.calificacion);
+    final puntaje = inspeccion.puntaje ?? ReglasEscala.puntaje(notas);
+    final inexactos = ReglasEscala.puntosInexactos(
+      declarado,
+      inspeccion.calificaciones,
+    );
+    return [
+      if (puntaje != null) ...[
+        const SizedBox(height: 12),
+        EtiquetaPuntaje(puntaje: puntaje),
+      ],
+      if (inspeccion.sugerirRechazo) ...[
+        const SizedBox(height: 10),
+        const RecuadroInfo(
+          icono: Icons.info_outline,
+          texto: 'Sugerencia: rechazar. Hay un punto calificado con 1 o el '
+              'promedio es menor que 2,5. Tú decides.',
+        ),
+      ],
+      if (inexactos.length >= ReglasEscala.puntosParaInexacta) ...[
+        const SizedBox(height: 10),
+        AvisoDeclaracionInexacta(
+          puntos: [
+            for (final clave in inexactos) PuntoChecklist.nombreDe(clave, categoria),
+          ],
+        ),
+      ],
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final pedido = widget.pedido;
@@ -184,8 +224,10 @@ class _DictamenScreenState extends State<DictamenScreen> {
               icono: Icons.warning_amber_rounded,
               texto: 'Este pedido no tiene checklist guardado.',
             )
-          else
+          else ...[
             ResumenChecklist(inspeccion: inspeccion, categoria: equipo.categoria),
+            ..._ayudaEscala(inspeccion, equipo.autoevaluacion, equipo.categoria),
+          ],
           const SizedBox(height: 24),
           const Text('¿Cuál es el dictamen?', style: Tipos.subtitulo),
           const SizedBox(height: 10),

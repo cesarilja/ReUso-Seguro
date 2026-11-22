@@ -1,3 +1,5 @@
+import 'escala.dart';
+
 /// Un punto que el inspector técnico revisa en un equipo (HU07).
 ///
 /// Cada tipo de equipo tiene su propio checklist: unos audífonos no tienen
@@ -217,12 +219,14 @@ enum ResultadoPunto {
 class RevisionPunto {
   const RevisionPunto({
     this.resultado,
+    this.calificacion,
     this.nota = '',
     this.evidencias = const [],
   });
 
   factory RevisionPunto.desdeJson(Map<String, dynamic> json) => RevisionPunto(
         resultado: ResultadoPunto.desde(json['resultado'] as String?),
+        calificacion: Calificacion.desde(json['calificacion']),
         nota: (json['nota'] as String?) ?? '',
         evidencias: ((json['evidencias'] as List?) ?? const [])
             .whereType<String>()
@@ -231,6 +235,10 @@ class RevisionPunto {
 
   /// null = todavía no se revisó.
   final ResultadoPunto? resultado;
+
+  /// HU15: la nota del 1 al 4. Null si es «No aplica» o si el checklist se
+  /// guardó antes del Sprint 4 (entonces solo hay «ok» o «falla»).
+  final Calificacion? calificacion;
   final String nota;
 
   /// Rutas de las fotos de evidencia en el almacén `evidencias`.
@@ -238,9 +246,14 @@ class RevisionPunto {
 
   bool get tieneFalla => resultado == ResultadoPunto.falla;
 
+  /// «4 de 4 (Excelente)», o el resultado si no hay nota.
+  String get textoCorto =>
+      calificacion?.etiqueta ?? resultado?.nombre ?? 'Sin revisar';
+
   Map<String, dynamic> aJson() => {
         'resultado': resultado?.clave,
-        if (tieneFalla) 'nota': nota.trim(),
+        if (calificacion != null) 'calificacion': calificacion!.valor,
+        if (nota.trim().isNotEmpty) 'nota': nota.trim(),
         if (tieneFalla) 'evidencias': evidencias,
       };
 }
@@ -252,6 +265,7 @@ class Inspeccion {
     required this.puntos,
     required this.completa,
     required this.actualizadaEn,
+    this.puntaje,
   });
 
   factory Inspeccion.desdeFila(Map<String, dynamic> fila) {
@@ -267,6 +281,7 @@ class Inspeccion {
       },
       completa: fila['completa'] as bool? ?? false,
       actualizadaEn: DateTime.parse(fila['actualizado_en'] as String).toLocal(),
+      puntaje: (fila['puntaje'] as num?)?.toDouble(),
     );
   }
 
@@ -285,6 +300,19 @@ class Inspeccion {
   final Map<String, RevisionPunto> puntos;
   final bool completa;
   final DateTime actualizadaEn;
+
+  /// HU15: promedio de las notas del 1 al 4 (sin contar «No aplica»).
+  final double? puntaje;
+
+  /// Las notas de cada punto, para comparar con lo que declaró el vendedor.
+  Map<String, int> get calificaciones => {
+        for (final entrada in puntos.entries)
+          if (entrada.value.calificacion != null)
+            entrada.key: entrada.value.calificacion!.valor,
+      };
+
+  bool get sugerirRechazo =>
+      ReglasEscala.sugerirRechazo(puntos.values.map((p) => p.calificacion));
 
   int get fallas => puntos.values.where((p) => p.tieneFalla).length;
 }

@@ -77,12 +77,12 @@ void main() {
       expect(pedido.montoADevolver, 250);
     });
 
-    test('CP-13.4 Un pedido aprobado sí cobra el 8 % (no se rompe la HU06)', () {
+    test('CP-13.4 Un pedido aprobado sí cobra la comisión del 5 % (HU06 y HU17)', () {
       final pedido = Pedido.desdeFila(_fila({'estado': 'aprobado'}), _equipo);
 
       expect(pedido.noPasoInspeccion, isFalse);
-      expect(pedido.comisionEstimada, 20);
-      expect(pedido.recibeVendedor, 230);
+      expect(pedido.comisionEstimada, 12.5);
+      expect(pedido.recibeVendedor, 237.5);
     });
   });
 }

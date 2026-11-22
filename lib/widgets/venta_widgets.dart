@@ -81,6 +81,22 @@ class InstruccionesEntrega extends StatelessWidget {
               child: DatoCopiable(titulo: 'Código del pedido', valor: venta.codigo),
             ),
           ),
+          // HU17: la inspección se paga al tocar «Ya entregué el equipo».
+          if (venta.inspeccionPendiente) ...[
+            const SizedBox(height: 10),
+            const PasoTransferencia(numero: 4, texto: 'Paga la inspección al avisar'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(36, 4, 0, 0),
+              child: Text(
+                'Inspección ${venta.planInspeccion.nombre}'
+                '${venta.conExpress ? ' Express' : ''}: '
+                '${formatearDolares(venta.costoInspeccion)}. Se paga con '
+                'tarjeta o Pago Móvil y no se devuelve si el equipo se '
+                'rechaza.',
+                style: Tipos.pequeno.copyWith(fontSize: 13.5, color: ColoresApp.tinta),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           BotonPegatina(
             texto: ocupado ? 'Avisando…' : 'Ya entregué el equipo',

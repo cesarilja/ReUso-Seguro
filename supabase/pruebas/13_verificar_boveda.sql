@@ -64,7 +64,7 @@ begin
     v_esperados := v_esperados || '1'::text;
     v_obtenidos := v_obtenidos || v_contar::text;
 
-    -- Se aprueba y se libera: liberación (276) + comisión (24).
+    -- Se aprueba y se libera: liberación (285) + comisión del 5 % (15).
     update public.pedidos set estado = 'aprobado' where id = v_pedido.id;
     perform public.liberar_pago(v_pedido.id);
     select coalesce(sum(monto), 0)::text into v_texto from public.movimientos_boveda

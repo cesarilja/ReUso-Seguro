@@ -6,6 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../formato.dart';
 import '../models/certificado.dart';
+import '../models/escala.dart';
 import '../models/inspeccion.dart';
 
 /// Arma el PDF del certificado técnico (HU03, escenario 4).
@@ -133,6 +134,14 @@ class CertificadoPdf {
           dato('Precio', pedido.montoFormateado),
           dato('Fecha del dictamen', formatearFecha(c.dictamen.emitidoEn)),
           dato('Inspector', c.dictamen.firmadoPor),
+          dato('Inspección', c.plan.nombre),
+          if (c.puntaje != null)
+            dato('Puntaje general', ReglasEscala.textoPuntaje(c.puntaje!)),
+          if (c.declaracionInexacta)
+            dato(
+              'Declaración inexacta',
+              c.puntosInexactos.map((p) => p.punto.nombre).join(', '),
+            ),
           pw.SizedBox(height: 14),
           pw.Text('Lo publicado frente a lo revisado', style: estilo(tamano: 13, fuerte: true)),
           pw.SizedBox(height: 6),
@@ -196,11 +205,19 @@ class CertificadoPdf {
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Text(
-                            punto.revision?.tieneFalla ?? false
+                            (punto.revision?.nota.trim() ?? '').isNotEmpty &&
+                                    punto.resultado != ResultadoPunto.noAplica
                                 ? punto.revision!.nota
                                 : punto.punto.queRevisar,
                             style: estilo(tamano: 9),
                           ),
+                          // HU19: lo que dijo el vendedor de este punto.
+                          if (punto.declarado != null)
+                            pw.Text(
+                              'Vendedor: ${punto.declarado!.etiqueta}'
+                              '${punto.inexacto ? ' (no coincide)' : ''}',
+                              style: estilo(tamano: 8.5, fuerte: punto.inexacto),
+                            ),
                           if ((fotos[punto.punto.clave] ?? const []).isNotEmpty) ...[
                             pw.SizedBox(height: 4),
                             pw.Wrap(

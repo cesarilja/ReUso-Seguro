@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/equipo.dart';
+import '../models/inspeccion.dart';
+import '../models/plan_inspeccion.dart';
 import 'catalogo_service.dart';
 import 'sesion_service.dart';
 
@@ -39,6 +41,9 @@ class NuevaPublicacion {
     required this.detallesEstado,
     required this.descripcion,
     required this.fotos,
+    this.plan = PlanInspeccion.basica,
+    this.express = false,
+    this.autoevaluacion = const {},
   });
 
   final String titulo;
@@ -48,6 +53,14 @@ class NuevaPublicacion {
   final String detallesEstado;
   final String descripcion;
   final List<FotoElegida> fotos;
+
+  /// HU16: plan de inspección que paga el vendedor y si la quiere Express.
+  final PlanInspeccion plan;
+  final bool express;
+
+  /// HU19: cómo califica el vendedor cada punto del checklist (1 a 4).
+  /// Un punto opcional sin nota es que su equipo no lo tiene.
+  final Map<String, int> autoevaluacion;
 }
 
 /// Error con un mensaje listo para mostrarle al vendedor.
@@ -190,6 +203,42 @@ class ReglasPublicacion {
     return null;
   }
 
+  /// HU19: qué falta en la autoevaluación, o null si está completa.
+  /// Todos los puntos del checklist llevan nota del 1 al 4, salvo los
+  /// opcionales (cámaras, lectora, micrófono).
+  static String? autoevaluacion(String? categoria, Map<String, int> notas) {
+    if (categoria == null) return 'Elige primero qué tipo de equipo es.';
+    final faltan = [
+      for (final punto in PuntoChecklist.para(categoria))
+        if (!punto.opcional && notas[punto.clave] == null) punto.nombre,
+    ];
+    if (faltan.isNotEmpty) {
+      return 'Califica del 1 al 4 cómo está: ${faltan.join(', ')}.';
+    }
+    final validas = {for (final p in PuntoChecklist.para(categoria)) p.clave};
+    for (final entrada in notas.entries) {
+      if (!validas.contains(entrada.key) ||
+          entrada.value < 1 ||
+          entrada.value > 4) {
+        return 'Vuelve a calificar los puntos de tu equipo del 1 al 4.';
+      }
+    }
+    return null;
+  }
+
+  /// Solo se guardan los puntos del checklist de ese tipo de equipo (si
+  /// el vendedor cambió de tipo, las notas viejas se descartan).
+  static Map<String, int> autoevaluacionLimpia(
+    String categoria,
+    Map<String, int> notas,
+  ) {
+    final validas = {for (final p in PuntoChecklist.para(categoria)) p.clave};
+    return {
+      for (final entrada in notas.entries)
+        if (validas.contains(entrada.key)) entrada.key: entrada.value,
+    };
+  }
+
   /// El texto que se guarda como estado declarado.
   static String estadoDeclarado(String condicion, String detalles) {
     final limpio = detalles.trim();
@@ -230,6 +279,13 @@ class PublicacionService {
       ReglasPublicacion.descripcion(datos.descripcion),
       ReglasPublicacion.fotos(datos.fotos),
       ...datos.fotos.map(ReglasPublicacion.foto),
+      ReglasPublicacion.autoevaluacion(
+        datos.categoria,
+        ReglasPublicacion.autoevaluacionLimpia(
+          datos.categoria,
+          datos.autoevaluacion,
+        ),
+      ),
     ].whereType<String>();
     if (errores.isNotEmpty) throw ErrorDePublicacion(errores.first);
 
@@ -263,6 +319,12 @@ class PublicacionService {
             ),
             'precio': ReglasPublicacion.leerPrecio(datos.precio),
             'fotos': rutas,
+            'plan_inspeccion': datos.plan.clave,
+            'express': datos.express,
+            'autoevaluacion': ReglasPublicacion.autoevaluacionLimpia(
+              datos.categoria,
+              datos.autoevaluacion,
+            ),
           })
           .select()
           .single();

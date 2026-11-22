@@ -4,6 +4,7 @@ import '../formato.dart';
 import '../models/certificado.dart';
 import '../models/inspeccion.dart';
 import '../models/pedido.dart';
+import '../models/plan_inspeccion.dart';
 import '../models/rastreo.dart';
 import '../services/certificado_pdf.dart';
 import '../services/descarga.dart';
@@ -14,6 +15,7 @@ import '../widgets/imagen_equipo.dart';
 import '../widgets/pagina_base.dart';
 import '../widgets/pedido_widgets.dart';
 import '../widgets/pegatina.dart';
+import '../widgets/plan_widgets.dart';
 
 const Color _verde = Color(0xFF1F7A44);
 const Color _rojo = Color(0xFFB3261E);
@@ -152,6 +154,30 @@ class CertificadoTecnico extends StatelessWidget {
         const SizedBox(height: 20),
         // Heurística 8: primero el resultado, después el detalle.
         _Resultado(certificado: certificado),
+        // HU15 y HU16: puntaje general y plan de la inspección.
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (certificado.puntaje != null)
+              EtiquetaPuntaje(puntaje: certificado.puntaje!),
+            if (certificado.plan == PlanInspeccion.detallada)
+              const SelloDetallada()
+            else
+              const Text('Inspección básica', style: Tipos.pequeno),
+          ],
+        ),
+        // HU19: lo declarado no coincidió con lo inspeccionado.
+        if (certificado.declaracionInexacta) ...[
+          const SizedBox(height: 12),
+          AvisoDeclaracionInexacta(
+            puntos: [
+              for (final p in certificado.puntosInexactos) p.punto.nombre,
+            ],
+          ),
+        ],
         const SizedBox(height: 20),
         _Equipo(certificado: certificado),
         const SizedBox(height: 20),
@@ -401,11 +427,24 @@ class _Comparacion extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final equipo = certificado.pedido.equipo;
+    // HU19: las notas del 1 al 4 del vendedor y del inspector.
+    final notasVendedor = [
+      for (final p in certificado.puntos)
+        if (p.declarado != null) '${p.punto.nombre} ${p.declarado!.valor}',
+    ].join(', ');
+    final notasInspector = [
+      for (final p in certificado.puntos)
+        if (p.calificacion != null) '${p.punto.nombre} ${p.calificacion!.valor}',
+    ].join(', ');
     final declarado = _Columna(
       icono: Icons.storefront_outlined,
       titulo: 'Lo que declaró el vendedor',
       principal: equipo.estadoDeclarado,
-      secundario: equipo.descripcion,
+      secundario: [
+        equipo.descripcion,
+        // HU19: su autoevaluación, punto por punto.
+        if (notasVendedor.isNotEmpty) 'Calificó (de 1 a 4): $notasVendedor.',
+      ].join('\n'),
       color: ColoresApp.nube,
     );
     final encontrado = _Columna(
@@ -416,6 +455,8 @@ class _Comparacion extends StatelessWidget {
         for (final falla in certificado.fallas)
           if ((falla.revision?.nota ?? '').isNotEmpty)
             '${falla.punto.nombre}: ${falla.revision!.nota}',
+        if (certificado.hayAutoevaluacion && notasInspector.isNotEmpty)
+          'Calificó (de 1 a 4): $notasInspector.',
       ].join('\n'),
       color: certificado.fallas.isEmpty
           ? const Color(0xFFDFF3E6)
@@ -547,6 +588,39 @@ class _LineaPunto extends StatelessWidget {
                   ],
                 ),
                 Text(punto.punto.queRevisar, style: Tipos.pequeno.copyWith(fontSize: 12.5)),
+                // HU19: lo que dijo el vendedor de este punto.
+                if (punto.declarado != null) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      if (punto.inexacto) ...[
+                        const Icon(Icons.report_problem_outlined, size: 16, color: Color(0xFF8A5A00)),
+                        const SizedBox(width: 4),
+                      ],
+                      Flexible(
+                        child: Text(
+                          'El vendedor dijo ${punto.declarado!.etiqueta}'
+                          '${punto.inexacto ? ': no coincide' : ''}',
+                          style: Tipos.pequeno.copyWith(
+                            fontSize: 12.5,
+                            fontWeight: punto.inexacto ? FontWeight.w700 : FontWeight.w400,
+                            color: punto.inexacto ? const Color(0xFF8A5A00) : null,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                // HU15 y HU16: la observación del inspector.
+                if (!(revision?.tieneFalla ?? false) &&
+                    (revision?.nota.trim() ?? '').isNotEmpty &&
+                    punto.resultado != ResultadoPunto.noAplica) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    revision!.nota,
+                    style: Tipos.pequeno.copyWith(fontSize: 14, color: ColoresApp.tinta),
+                  ),
+                ],
                 if (revision?.tieneFalla ?? false) ...[
                   const SizedBox(height: 6),
                   Text(

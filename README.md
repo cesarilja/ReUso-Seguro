@@ -115,9 +115,9 @@ flutter run -d chrome
 | HU05. Respaldo técnico ante reclamos | 5 | Hecha | 11/11 (PR #7) |
 | HU10. Sincronización en tiempo real | 3 | Hecha | 11/11 (PR #7) |
 
-Con este sprint queda terminado todo el Product Backlog (59 puntos). El Sprint 4 es de pruebas y ajustes.
+Con este sprint quedó terminado el Product Backlog original (59 puntos).
 
-**Scripts de Supabase:** se corren en orden en el SQL Editor (`supabase/01_…` a `supabase/14_…`). Los de `supabase/pruebas/` verifican cada historia, lo deshacen todo al final y todas sus filas deben decir «OK».
+**Scripts de Supabase:** se corren en orden en el SQL Editor (`supabase/01_…` a `supabase/16_…`). Los de `supabase/pruebas/` verifican cada historia, lo deshacen todo al final y todas sus filas deben decir «OK».
 
 - **Reembolso por equipo rechazado** (HU13 · Sprint 3: `supabase/09_reembolso.sql`, `lib/widgets/pedido_widgets.dart`):
   - cuando el inspector rechaza el equipo, un disparador en el servidor pasa el pedido a «Reembolsado» y le devuelve al comprador el 100 % de lo que pagó, sin comisión;
@@ -170,6 +170,47 @@ Con este sprint queda terminado todo el Product Backlog (59 puntos). El Sprint 4
   - el administrador tiene el **«Monitor de avisos»**: cada cambio con su hora y si el comprador y el vendedor ya lo vieron (se actualiza solo);
   - si se cae la conexión en vivo, bajo la barra aparece **«Sin conexión en vivo, reintentando…»**; la app se reconecta sola y el aviso desaparece.
   - Pruebas: `flutter test` (`test/reclamo_test.dart`, `test/aviso_test.dart` y `test/widget/reclamo_avisos_test.dart`) y `supabase/pruebas/14_verificar_reclamos_y_avisos.sql` (todas las filas deben decir «OK»).
+
+## Sprint 4 (18/11 al 02/12/2026)
+
+Después de la revisión del Sprint 3 entró una mejora que pidió un compañero: calificar el checklist del 1 al 4 y que el vendedor pague la inspección, porque un equipo rechazado igual le cuesta horas al inspector. A eso le sumamos la reputación del vendedor. Son 6 historias nuevas (24 puntos) y el backlog pasa de 59 a 83 puntos.
+
+| Historia | Puntos | Estado |
+|---|---|---|
+| HU15. Checklist con escala del 1 al 4 | 5 | En desarrollo |
+| HU16. Elegir un plan de inspección | 3 | En desarrollo |
+| HU17. Cobro de la inspección al vendedor | 5 | En desarrollo |
+| HU18. Sello y puntaje en el catálogo | 3 | En desarrollo |
+| HU19. Declarado vs encontrado con escala | 3 | En desarrollo |
+| HU20. Reputación del vendedor según sus inspecciones | 5 | En desarrollo |
+
+**Scripts nuevos:** `supabase/15_planes_y_escala.sql` y `supabase/16_reputacion.sql` (en ese orden, después del 14). Se pueden volver a correr sin problema. Sus verificaciones son `supabase/pruebas/15_verificar_planes_y_escala.sql` (24 filas) y `supabase/pruebas/16_verificar_reputacion.sql` (8 filas); todas deben decir «OK». Como la comisión ahora es del 5 % (o 4 % según el nivel del vendedor), también se actualizaron `pruebas/12_verificar_vendedor_y_liberacion.sql` y `pruebas/13_verificar_boveda.sql`.
+
+- **Escala del 1 al 4** (HU15: `lib/models/escala.dart`, `lib/screens/inspeccion_screen.dart`):
+  - el inspector califica cada punto con 4 Excelente, 3 Bueno, 2 Regular o 1 Malo (o «No aplica» en los opcionales). Cada nota tiene número, nombre, ícono y color, nunca solo color;
+  - 1 y 2 cuentan como falla: piden descripción y al menos una foto, igual que antes;
+  - se guarda el puntaje general (promedio sin los «No aplica») y se muestra en el dictamen, el certificado, el PDF y la tarjeta del catálogo;
+  - la app sugiere rechazar si hay un punto en 1 o el promedio baja de 2,5. La decisión sigue siendo del inspector.
+- **Planes de inspección** (HU16: `lib/models/plan_inspeccion.dart`, `lib/widgets/plan_widgets.dart`):
+  - Básica: 4 % del precio (mínimo $5, máximo $30). Detallada: 8 % (mínimo $10, máximo $60), con una observación del inspector en cada punto y un sello en el catálogo. Express suma $8 y el Hub la revisa en menos de 24 h;
+  - el vendedor elige el plan al publicar y ve cuánto recibiría. Mientras el equipo no se venda, puede cambiar el plan desde «Tus equipos publicados» en Mis ventas.
+- **Cobro de la inspección** (HU17: `lib/widgets/pago_inspeccion_dialogo.dart`, `pagar_inspeccion` en el script 15):
+  - al tocar «Ya entregué el equipo» el vendedor paga la inspección con ReUso Pay (tarjeta o Pago Móvil, SIMULADO). Si el banco la aprueba, la entrega queda registrada de una vez;
+  - el Hub no puede registrar la llegada de un equipo con la inspección sin pagar («Inspección sin pagar»);
+  - no se devuelve si el equipo se rechaza. Ese dinero no pasa por la custodia: la bóveda lo muestra aparte en «Inspecciones cobradas»;
+  - la comisión baja del 8 % al 5 %. Las ventas que ya se liberaron con 8 % se siguen mostrando con su porcentaje real.
+- **Sello y puntaje en el catálogo** (HU18): las tarjetas muestran el sello «Inspección detallada» y, después del dictamen, el puntaje (por ejemplo «3,8 de 4»). Hay un filtro «Solo inspección detallada», y con ese plan el comprador tiene 7 días para reclamar en vez de 3.
+- **Autoevaluación del vendedor** (HU19):
+  - al publicar, el vendedor califica del 1 al 4 cada parte de su equipo con la misma escala del inspector;
+  - al dictaminar, el servidor compara: si en 2 o más puntos el vendedor puso 2 notas o más por encima de lo que encontró el inspector, el dictamen queda marcado como «Declaración inexacta» y el certificado lo muestra punto por punto;
+  - el vendedor también lo ve en Mis ventas, y el administrador ve en la bóveda cuántas declaraciones inexactas tiene cada vendedor.
+- **Reputación del vendedor** (HU20: `lib/models/reputacion.dart`, `lib/services/reputacion_service.dart`, `lib/widgets/reputacion_widgets.dart`, `supabase/16_reputacion.sql`):
+  - sale de las inspecciones del Hub, no de reseñas: ventas inspeccionadas, equipos aprobados, declaraciones inexactas en las últimas 5 ventas y días promedio para entregar en el Hub;
+  - niveles: Vendedor nuevo (menos de 3 ventas), Vendedor, Confiable (90 % o más aprobadas y ninguna declaración inexacta reciente) y Destacado (además 10 ventas, 95 % aprobadas y entrega en 2 días o menos);
+  - Confiable y Destacado pagan 4 % de comisión en vez de 5 %. El nivel se recalcula con cada dictamen;
+  - el sello sale en el catálogo junto al nombre del vendedor, el detalle del equipo muestra la reputación completa y en Mis ventas el vendedor ve su nivel, su comisión y lo que le falta para subir.
+- Pruebas: `flutter test` (`test/planes_y_escala_test.dart`, `test/reputacion_test.dart`, `test/widget/planes_test.dart` y `test/widget/reputacion_test.dart`; también se ajustaron `test/reembolso_test.dart` y `test/vendedor_test.dart` al 5 %).
+- Los pedidos de antes del Sprint 4 no piden pagar la inspección: solo los que se crean desde ahora.
 
 ### Lo que ya venía del Sprint 2 (navegación, tiempo real y usabilidad)
 

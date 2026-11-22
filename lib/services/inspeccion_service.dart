@@ -3,8 +3,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/dictamen.dart';
 import '../models/equipo.dart';
+import '../models/escala.dart';
 import '../models/inspeccion.dart';
 import '../models/pedido.dart';
+import '../models/plan_inspeccion.dart';
 import '../models/reclamo.dart';
 import 'catalogo_service.dart';
 import 'pedido_service.dart';
@@ -20,9 +22,14 @@ class PedidoHub {
 }
 
 /// Lo que el inspector va llenando en un punto antes de guardar.
+///
+/// HU15: el inspector pone una nota del 1 al 4 (o «No aplica» en los puntos
+/// opcionales). El resultado sale de la nota: 3 y 4 funcionan bien, 1 y 2
+/// son una falla.
 class BorradorPunto {
   BorradorPunto({
-    this.resultado,
+    this.calificacion,
+    this.noAplica = false,
     this.nota = '',
     List<String>? guardadas,
     List<FotoElegida>? nuevas,
@@ -30,12 +37,15 @@ class BorradorPunto {
         nuevas = nuevas ?? [];
 
   factory BorradorPunto.desde(RevisionPunto? revision) => BorradorPunto(
-        resultado: revision?.resultado,
+        // Un checklist viejo (sin notas) se vuelve a calificar.
+        calificacion: revision?.calificacion,
+        noAplica: revision?.resultado == ResultadoPunto.noAplica,
         nota: revision?.nota ?? '',
         guardadas: [...?revision?.evidencias],
       );
 
-  ResultadoPunto? resultado;
+  Calificacion? calificacion;
+  bool noAplica;
   String nota;
 
   /// Fotos que ya estaban subidas (rutas en el almacén).
@@ -43,6 +53,23 @@ class BorradorPunto {
 
   /// Fotos que el inspector acaba de elegir y todavía no se suben.
   final List<FotoElegida> nuevas;
+
+  ResultadoPunto? get resultado {
+    if (noAplica) return ResultadoPunto.noAplica;
+    final nota = calificacion;
+    if (nota == null) return null;
+    return nota.esFalla ? ResultadoPunto.falla : ResultadoPunto.ok;
+  }
+
+  void calificar(Calificacion valor) {
+    calificacion = valor;
+    noAplica = false;
+  }
+
+  void marcarNoAplica() {
+    calificacion = null;
+    noAplica = true;
+  }
 
   int get totalFotos => guardadas.length + nuevas.length;
   bool get revisado => resultado != null;
@@ -85,23 +112,35 @@ class ReglasDictamen {
   }
 }
 
-/// Reglas del checklist (HU07). El servidor revisa las mismas.
+/// Reglas del checklist (HU07 y HU15). El servidor revisa las mismas.
 class ReglasInspeccion {
   ReglasInspeccion._();
 
   static const int minimoNota = 10;
   static const int maximoFotosPorPunto = 4;
 
-  /// Qué le falta a un punto, o null si está completo.
-  static String? punto(BorradorPunto borrador) {
-    if (!borrador.revisado) return 'Marca si funciona bien o si tiene una falla.';
-    if (!borrador.tieneFalla) return null;
-    if (borrador.nota.trim().length < minimoNota) {
-      return 'Describe la falla (mínimo $minimoNota caracteres). '
-          'Ejemplo: 3 píxeles muertos en la esquina superior.';
+  /// Qué le falta a un punto, o null si está completo. Con el plan
+  /// [PlanInspeccion.detallada] cada punto calificado lleva una observación.
+  static String? punto(
+    BorradorPunto borrador, {
+    PlanInspeccion plan = PlanInspeccion.basica,
+  }) {
+    if (!borrador.revisado) return 'Califica este punto del 1 al 4.';
+    if (borrador.noAplica) return null;
+    final largo = borrador.nota.trim().length;
+    if (borrador.tieneFalla) {
+      if (largo < minimoNota) {
+        return 'Describe la falla (mínimo $minimoNota caracteres). '
+            'Ejemplo: 3 píxeles muertos en la esquina superior.';
+      }
+      if (borrador.totalFotos < 1) {
+        return 'Agrega al menos una foto de la falla como evidencia.';
+      }
+      return null;
     }
-    if (borrador.totalFotos < 1) {
-      return 'Agrega al menos una foto de la falla como evidencia.';
+    if (plan == PlanInspeccion.detallada && largo < minimoNota) {
+      return 'Inspección detallada: escribe una observación de este punto '
+          '(mínimo $minimoNota caracteres).';
     }
     return null;
   }
@@ -304,6 +343,7 @@ class InspeccionService extends ChangeNotifier {
     Map<String, BorradorPunto> borradores,
   ) async {
     final categoria = pedido.equipo.categoria;
+    final plan = pedido.equipo.plan;
     final checklist = PuntoChecklist.para(categoria);
     for (final punto in checklist) {
       if (borradores[punto.clave]?.resultado == ResultadoPunto.noAplica &&
@@ -312,6 +352,7 @@ class InspeccionService extends ChangeNotifier {
       }
       final problema = ReglasInspeccion.punto(
         borradores[punto.clave] ?? BorradorPunto(),
+        plan: plan,
       );
       if (problema != null) {
         throw ErrorDeInspeccion('${punto.nombre}: $problema');
@@ -343,7 +384,8 @@ class InspeccionService extends ChangeNotifier {
         }
         puntos[punto.clave] = RevisionPunto(
           resultado: borrador.resultado,
-          nota: borrador.nota,
+          calificacion: borrador.noAplica ? null : borrador.calificacion,
+          nota: borrador.noAplica ? '' : borrador.nota,
           evidencias: evidencias,
         ).aJson();
       }
@@ -420,9 +462,27 @@ class InspeccionService extends ChangeNotifier {
         '${nombreDe('Un punto')}: este punto sí se revisa en este equipo.',
       );
     }
-    if (mensaje.contains('INCOMPLETO')) {
+    if (mensaje.contains('INCOMPLETO') || mensaje.contains('SIN_CALIFICACION')) {
       return ErrorDeInspeccion(
-        '${nombreDe('Un punto')}: falta marcar si funciona bien o tiene falla.',
+        '${nombreDe('Un punto')}: falta calificarlo del 1 al 4.',
+      );
+    }
+    if (mensaje.contains('CALIFICACION')) {
+      return ErrorDeInspeccion(
+        '${nombreDe('Un punto')}: la nota no coincide con el resultado. '
+        'Vuelve a calificarlo.',
+      );
+    }
+    if (mensaje.contains('FALTA_OBSERVACION')) {
+      return ErrorDeInspeccion(
+        '${nombreDe('Un punto')}: la inspección detallada lleva una '
+        'observación en cada punto (mínimo 10 caracteres).',
+      );
+    }
+    if (mensaje.contains('INSPECCION_SIN_PAGAR')) {
+      return const ErrorDeInspeccion(
+        'El vendedor todavía no pagó la inspección. No se puede registrar la '
+        'llegada hasta que la pague.',
       );
     }
     if (mensaje.contains('FALTA_NOTA')) {

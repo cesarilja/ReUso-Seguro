@@ -97,6 +97,117 @@ ThemeData temaApp() {
     fontFamily: 'Poppins',
     colorScheme: ColorScheme.fromSeed(seedColor: ColoresApp.orquidea),
     scaffoldBackgroundColor: Colors.white,
+
+    // ── Tooltips más bonitos ────────────────────────────────────────────
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(
+        color: ColoresApp.tinta,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(40),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      textStyle: const TextStyle(
+        fontFamily: 'Poppins',
+        fontSize: 12.5,
+        color: Colors.white,
+        fontWeight: FontWeight.w500,
+      ),
+      waitDuration: const Duration(milliseconds: 400),
+      preferBelow: true,
+    ),
+
+    // ── Botones rellenos (FilledButton) ────────────────────────────────
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        textStyle: const TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ).copyWith(
+        mouseCursor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return SystemMouseCursors.forbidden;
+          }
+          return SystemMouseCursors.click;
+        }),
+        overlayColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.hovered)) {
+            return Colors.white.withAlpha(30);
+          }
+          return null;
+        }),
+      ),
+    ),
+
+    // ── Botones de texto (TextButton) ──────────────────────────────────
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        textStyle: const TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ).copyWith(
+        mouseCursor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return SystemMouseCursors.forbidden;
+          }
+          return SystemMouseCursors.click;
+        }),
+      ),
+    ),
+
+    // ── Botones de contorno (OutlinedButton) ───────────────────────────
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        textStyle: const TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ).copyWith(
+        mouseCursor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return SystemMouseCursors.forbidden;
+          }
+          return SystemMouseCursors.click;
+        }),
+      ),
+    ),
+
+    // ── Switch (Express) ───────────────────────────────────────────────
+    switchTheme: SwitchThemeData(
+      mouseCursor: WidgetStateProperty.all(SystemMouseCursors.click),
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return ColoresApp.orquidea;
+        }
+        return null;
+      }),
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return ColoresApp.lila;
+        }
+        return null;
+      }),
+    ),
+
+    // ── Chips (filtros del catálogo) ───────────────────────────────────
+    chipTheme: ChipThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    ),
+
+    // ── Snackbar ───────────────────────────────────────────────────────
     snackBarTheme: const SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: ColoresApp.tinta,

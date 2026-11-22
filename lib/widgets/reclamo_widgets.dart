@@ -203,10 +203,10 @@ class PlazoReclamo extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const RecuadroInfo(
+            RecuadroInfo(
               icono: Icons.local_shipping_outlined,
               texto: 'Cuando tengas el equipo en tus manos, confírmalo. Desde ese '
-                  'momento tienes ${ReglasReclamo.plazoDias} días para reclamar si '
+                  'momento tienes ${ReglasReclamo.plazoDe(pedido)} días para reclamar si '
                   'algo no está bien.',
             ),
             const SizedBox(height: 10),
@@ -237,7 +237,7 @@ class PlazoReclamo extends StatelessWidget {
       case SituacionReclamo.fueraDePlazo:
         return RecuadroInfo(
           icono: Icons.event_busy_outlined,
-          texto: 'El plazo de ${ReglasReclamo.plazoDias} días para reclamar terminó '
+          texto: 'El plazo de ${ReglasReclamo.plazoDe(pedido)} días para reclamar terminó '
               'el ${formatearFecha(vence!)}. Si necesitas ayuda, escríbenos.',
         );
     }

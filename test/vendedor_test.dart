@@ -63,8 +63,8 @@ void main() {
       expect(venta.liberacionMotivo, MotivoLiberacion.sinCuenta);
       expect(venta.liberacionIntentos, 1);
       expect(venta.pagoLiberado, isFalse);
-      // El vendedor ve lo que va a recibir: el monto menos el 8 %.
-      expect(venta.recibeVendedor, 230);
+      // El vendedor ve lo que va a recibir: el monto menos el 5 % (HU17).
+      expect(venta.recibeVendedor, 237.5);
     });
 
     test('CP-06.2 Cada motivo explica qué hacer', () {
