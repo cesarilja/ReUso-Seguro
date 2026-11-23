@@ -52,7 +52,7 @@ jobs:
         run: flutter test
 
       - name: Compilar la app para la web
-        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+        run: flutter build web --release --pwa-strategy=none --base-href "/${{ github.event.repository.name }}/"
 
       - name: Preparar GitHub Pages
         uses: actions/configure-pages@v5
