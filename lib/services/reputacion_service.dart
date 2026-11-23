@@ -79,7 +79,7 @@ class ReputacionService extends ChangeNotifier {
     try {
       final usuario = _cliente.auth.currentUser?.id;
       if (usuario == null) return null;
-      return deVendedor(usuario);
+      return await deVendedor(usuario);
     } catch (error) {
       debugPrint('[ReputacionService] mia: $error');
       return null;
