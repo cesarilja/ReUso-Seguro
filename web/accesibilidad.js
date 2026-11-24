@@ -116,4 +116,18 @@
     iniciarDictado: iniciarDictado,
     detenerDictado: detenerDictado,
   };
+
+  // Mantiene lang="es" en <html> aunque Flutter Web intente sobrescribirlo con "en-US".
+  function asegurarIdiomaEspanol() {
+    if (document.documentElement && document.documentElement.lang !== 'es') {
+      document.documentElement.lang = 'es';
+    }
+  }
+  asegurarIdiomaEspanol();
+  if (typeof MutationObserver !== 'undefined' && document.documentElement) {
+    new MutationObserver(asegurarIdiomaEspanol).observe(
+      document.documentElement,
+      { attributes: true, attributeFilter: ['lang'] }
+    );
+  }
 })();
