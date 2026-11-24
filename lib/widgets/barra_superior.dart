@@ -66,14 +66,18 @@ class BarraSuperior extends StatelessWidget {
     final corta = ancho < 640;
     final muyCorta = ancho < 400;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _barra(context, corta: corta, muyCorta: muyCorta, ancho: ancho),
-        // HU10: si se cae el tiempo real, se avisa aquí.
-        const IndicadorConexion(),
-      ],
+    return Semantics(
+      header: true,
+      label: 'Barra de navegación principal de ReUso Seguro',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _barra(context, corta: corta, muyCorta: muyCorta, ancho: ancho),
+          // HU10: si se cae el tiempo real, se avisa aquí.
+          const IndicadorConexion(),
+        ],
+      ),
     );
   }
 
@@ -151,29 +155,34 @@ class BarraSuperior extends StatelessWidget {
               }
             }
 
-            final logo = InkWell(
-              onTap: alTocarLogo ?? () => irA(context, Seccion.inicio),
-              borderRadius: BorderRadius.circular(10),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Image.asset(
-                      'assets/images/logo.png',
-                      width: 36,
-                      height: 36,
-                    ),
-                    if (mostrarNombre) ...[
-                      const SizedBox(width: 10),
-                      Text(
-                        'ReUso Seguro',
-                        maxLines: 1,
-                        softWrap: false,
-                        style: Tipos.subtitulo.copyWith(fontSize: 20),
+            final logo = Semantics(
+              button: true,
+              label: 'Ir al inicio de ReUso Seguro',
+              child: InkWell(
+                onTap: alTocarLogo ?? () => irA(context, Seccion.inicio),
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset(
+                        'assets/images/logo.png',
+                        width: 36,
+                        height: 36,
+                        semanticLabel: 'Logo de ReUso Seguro',
                       ),
+                      if (mostrarNombre) ...[
+                        const SizedBox(width: 10),
+                        Text(
+                          'ReUso Seguro',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: Tipos.subtitulo.copyWith(fontSize: 20),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             );

@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'configuracion.dart';
@@ -12,6 +14,12 @@ import 'widgets/avisos.dart';
 Future<void> main() async {
   // Hace falta antes de usar Supabase, que se conecta al arrancar.
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Activa el árbol de accesibilidad (Semantics Tree) en web desde el inicio
+  // para lectores de pantalla (NVDA) y auditorías automatizadas.
+  if (kIsWeb) {
+    SemanticsBinding.instance.ensureSemantics();
+  }
 
   await Supabase.initialize(
     url: Configuracion.supabaseUrl,

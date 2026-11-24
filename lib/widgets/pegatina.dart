@@ -49,10 +49,13 @@ class _PegatinaState extends State<Pegatina> {
       decoration: BoxDecoration(
         color: widget.color,
         borderRadius: BorderRadius.circular(widget.radio),
-        border: Border.all(color: ColoresApp.tinta, width: 2),
+        border: Border.all(
+          color: _conFoco ? ColoresApp.orquideaAccesible : ColoresApp.tinta,
+          width: _conFoco ? 3 : 2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: resaltada ? ColoresApp.orquidea : widget.colorSombra,
+            color: resaltada ? ColoresApp.orquideaAccesible : widget.colorSombra,
             offset: Offset(sombra, sombra),
           ),
         ],
@@ -134,9 +137,15 @@ class BotonPegatina extends StatelessWidget {
       ),
     );
 
+    final botonConSemantica = Semantics(
+      button: true,
+      label: tooltip ?? texto,
+      child: boton,
+    );
+
     if (tooltip != null) {
-      return Tooltip(message: tooltip!, child: boton);
+      return Tooltip(message: tooltip!, child: botonConSemantica);
     }
-    return boton;
+    return botonConSemantica;
   }
 }

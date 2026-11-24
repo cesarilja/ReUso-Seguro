@@ -8,6 +8,7 @@ import '../services/catalogo_service.dart';
 import '../services/filtro_catalogo.dart';
 import '../services/publicacion_service.dart';
 import '../services/reputacion_service.dart';
+import '../services/voz_service.dart';
 import '../tema.dart';
 import '../widgets/avisos.dart';
 import '../widgets/barra_superior.dart';
@@ -383,15 +384,26 @@ class _PortadaMarketplace extends StatelessWidget {
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
               hintText: 'Busca laptops, iPhones, consolas, audífonos…',
-              hintStyle: const TextStyle(color: Color(0xFF6B7088)),
+              hintStyle: const TextStyle(color: ColoresApp.pizarra),
               prefixIcon: const Icon(Icons.search, color: ColoresApp.tinta),
-              suffixIcon: textoBusqueda.isEmpty
-                  ? null
-                  : IconButton(
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (textoBusqueda.isNotEmpty)
+                    IconButton(
                       tooltip: 'Borrar búsqueda',
-                      icon: const Icon(Icons.close),
+                      icon: const Icon(Icons.close, color: ColoresApp.tinta),
                       onPressed: alLimpiarBusqueda,
                     ),
+                  _BotonDictadoVoz(
+                    alDictar: (texto) {
+                      buscador.text = texto;
+                      alBuscarTexto(texto);
+                      alEnviarBusqueda();
+                    },
+                  ),
+                ],
+              ),
               filled: true,
               fillColor: Colors.white,
               contentPadding: const EdgeInsets.symmetric(
@@ -404,8 +416,10 @@ class _PortadaMarketplace extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide:
-                    const BorderSide(color: ColoresApp.orquidea, width: 3),
+                borderSide: const BorderSide(
+                  color: ColoresApp.orquideaAccesible,
+                  width: 3,
+                ),
               ),
             ),
           ),
@@ -453,15 +467,30 @@ class _PortadaMarketplace extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        Text(
-          'Tecnología de segunda mano, sin riesgo a estafas',
-          style: Tipos.titular.copyWith(fontSize: tamanoTitular, height: 1.15),
+        Semantics(
+          header: true,
+          child: Text(
+            'Tecnología de segunda mano, sin riesgo a estafas',
+            style: Tipos.titular.copyWith(fontSize: tamanoTitular, height: 1.15),
+          ),
         ),
         const SizedBox(height: 10),
-        Text(
-          'Tu pago queda en custodia hasta que nuestro Hub revisa el equipo '
-          'punto por punto. Si no pasa, te devolvemos el dinero.',
-          style: Tipos.cuerpo.copyWith(fontSize: 15.5, color: ColoresApp.tinta),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                'Tu pago queda en custodia hasta que nuestro Hub revisa el equipo '
+                'punto por punto. Si no pasa, te devolvemos el dinero.',
+                style: Tipos.cuerpo.copyWith(
+                  fontSize: 15.5,
+                  color: ColoresApp.tinta,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            const _BotonLecturaResumen(),
+          ],
         ),
         const SizedBox(height: 18),
         cajaBuscador,
@@ -1835,6 +1864,153 @@ class _EstadoCatalogo extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+
+// =============================================================================
+// ACCESIBILIDAD WEB — SERVICIO DE VOZ (WEB SPEECH API)
+// =============================================================================
+
+/// Botón de búsqueda por voz en el catálogo mediante Web Speech API
+/// (SpeechRecognition en Google Chrome / Edge).
+class _BotonDictadoVoz extends StatefulWidget {
+  const _BotonDictadoVoz({required this.alDictar});
+
+  final ValueChanged<String> alDictar;
+
+  @override
+  State<_BotonDictadoVoz> createState() => _BotonDictadoVozState();
+}
+
+class _BotonDictadoVozState extends State<_BotonDictadoVoz> {
+  bool _escuchando = false;
+
+  void _alternarDictado() {
+    final voz = VozService.instancia;
+    if (_escuchando) {
+      voz.detenerDictado();
+      setState(() => _escuchando = false);
+      return;
+    }
+
+    if (!voz.soportaDictado) {
+      mostrarAviso(
+        context,
+        'La búsqueda por voz está disponible en navegadores compatibles como Google Chrome.',
+      );
+      return;
+    }
+
+    setState(() => _escuchando = true);
+    voz.anunciar('Escuchando búsqueda por voz');
+    final iniciado = voz.iniciarDictado(
+      alRecibirTexto: (texto) {
+        if (!mounted) return;
+        widget.alDictar(texto);
+        mostrarAviso(context, 'Buscando: $texto');
+      },
+      alFallar: (_) {
+        if (!mounted) return;
+        mostrarAviso(context, 'No se pudo reconocer la voz. Intenta de nuevo.');
+      },
+      alTerminar: () {
+        if (!mounted) return;
+        setState(() => _escuchando = false);
+      },
+    );
+    if (!iniciado && mounted) {
+      setState(() => _escuchando = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_escuchando) {
+      VozService.instancia.detenerDictado();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: _escuchando
+          ? 'Detener dictado por voz'
+          : 'Buscar equipos por voz',
+      icon: Icon(
+        _escuchando ? Icons.mic : Icons.mic_none_outlined,
+        color: _escuchando
+            ? ColoresApp.orquideaAccesible
+            : ColoresApp.tinta,
+      ),
+      onPressed: _alternarDictado,
+    );
+  }
+}
+
+/// Botón para escuchar en voz alta el resumen principal de ReUso Seguro
+/// mediante Web Speech API (SpeechSynthesis).
+class _BotonLecturaResumen extends StatefulWidget {
+  const _BotonLecturaResumen();
+
+  @override
+  State<_BotonLecturaResumen> createState() => _BotonLecturaResumenState();
+}
+
+class _BotonLecturaResumenState extends State<_BotonLecturaResumen> {
+  static const _resumen =
+      'ReUso Seguro. Tecnología de segunda mano sin riesgo a estafas. '
+      'Tu pago queda en custodia hasta que nuestro Hub revisa el equipo punto '
+      'por punto. Si pasa la inspección, se entrega y el vendedor cobra. '
+      'Si no pasa, te devolvemos el dinero.';
+
+  bool _leyendo = false;
+
+  void _alternarLectura() {
+    final voz = VozService.instancia;
+    if (_leyendo) {
+      voz.detenerLectura();
+      setState(() => _leyendo = false);
+      return;
+    }
+
+    if (!voz.soportaLectura) {
+      mostrarAviso(
+        context,
+        'La lectura en voz alta no está disponible en este navegador.',
+      );
+      return;
+    }
+
+    final ok = voz.leerEnVozAlta(_resumen);
+    if (ok) {
+      voz.anunciar('Leyendo resumen de ReUso Seguro en voz alta');
+      setState(() => _leyendo = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_leyendo) {
+      VozService.instancia.detenerLectura();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: _leyendo
+          ? 'Detener lectura en voz alta'
+          : 'Escuchar resumen de ReUso Seguro en voz alta',
+      icon: Icon(
+        _leyendo ? Icons.stop_circle_outlined : Icons.volume_up_outlined,
+        color: _leyendo ? ColoresApp.orquideaAccesible : ColoresApp.tinta,
+        size: 22,
+      ),
+      onPressed: _alternarLectura,
     );
   }
 }
