@@ -9,20 +9,24 @@ class ColoresApp {
   /// Azul casi negro: textos, bordes y sombras.
   static const Color tinta = Color(0xFF15133D);
 
-  /// Morado de la marca.
+  /// Morado de la marca (decorativo y acentos).
   static const Color orquidea = Color(0xFFB868C8);
+
+  /// Morado con contraste WCAG AA (6.2:1 sobre blanco) para texto, enlaces y foco.
+  static const Color orquideaAccesible = Color(0xFF8A349B);
 
   static const Color vinca = Color(0xFF5868B8);
   static const Color cielo = Color(0xFFB8C8E8);
 
-  /// Texto secundario.
+  /// Texto secundario (contraste 7.1:1 sobre blanco).
   static const Color pizarra = Color(0xFF4F5878);
 
   /// Fondos suaves.
   static const Color lila = Color(0xFFF3E9F7);
   static const Color nube = Color(0xFFE6ECF8);
 
-  static const Color verde = Color(0xFF2E9E5B);
+  /// Verde de estado con contraste WCAG AA (5.1:1 sobre blanco).
+  static const Color verde = Color(0xFF1E7E45);
 }
 
 /// Estilos de texto que se repiten en la app.
@@ -139,10 +143,22 @@ ThemeData temaApp() {
           return SystemMouseCursors.click;
         }),
         overlayColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return ColoresApp.orquideaAccesible.withAlpha(45);
+          }
           if (states.contains(WidgetState.hovered)) {
             return Colors.white.withAlpha(30);
           }
           return null;
+        }),
+        side: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return const BorderSide(
+              color: ColoresApp.orquideaAccesible,
+              width: 2.5,
+            );
+          }
+          return BorderSide.none;
         }),
       ),
     ),
@@ -163,6 +179,15 @@ ThemeData temaApp() {
           }
           return SystemMouseCursors.click;
         }),
+        side: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return const BorderSide(
+              color: ColoresApp.orquideaAccesible,
+              width: 2.5,
+            );
+          }
+          return BorderSide.none;
+        }),
       ),
     ),
 
@@ -181,6 +206,30 @@ ThemeData temaApp() {
             return SystemMouseCursors.forbidden;
           }
           return SystemMouseCursors.click;
+        }),
+        side: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return const BorderSide(
+              color: ColoresApp.orquideaAccesible,
+              width: 2.5,
+            );
+          }
+          return null;
+        }),
+      ),
+    ),
+
+    // ── Botones de ícono (IconButton) ──────────────────────────────────
+    iconButtonTheme: IconButtonThemeData(
+      style: ButtonStyle(
+        side: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return const BorderSide(
+              color: ColoresApp.orquideaAccesible,
+              width: 2.5,
+            );
+          }
+          return BorderSide.none;
         }),
       ),
     ),

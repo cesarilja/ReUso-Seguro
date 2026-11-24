@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/acceso_screen.dart';
 import '../services/sesion_service.dart';
+import '../services/voz_service.dart';
 
 /// Permite mostrar avisos desde cualquier pantalla (HU04: «Te compraron…»).
 final GlobalKey<ScaffoldMessengerState> avisosGlobales =
@@ -9,6 +10,7 @@ final GlobalKey<ScaffoldMessengerState> avisosGlobales =
 
 /// Muestra un aviso en la pantalla que esté abierta, sea cual sea.
 void mostrarAvisoGlobal(String mensaje) {
+  VozService.instancia.anunciar(mensaje);
   avisosGlobales.currentState
     ?..hideCurrentSnackBar()
     ..showSnackBar(
@@ -22,6 +24,7 @@ void mostrarAvisoGlobal(String mensaje) {
 
 /// Muestra un mensaje corto en la parte de abajo de la pantalla.
 void mostrarAviso(BuildContext context, String mensaje) {
+  VozService.instancia.anunciar(mensaje);
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(mensaje)));

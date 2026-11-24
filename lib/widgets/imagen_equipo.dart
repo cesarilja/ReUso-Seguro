@@ -26,12 +26,15 @@ class ImagenEquipo extends StatelessWidget {
   Widget build(BuildContext context) {
     if (equipo.fotos.isEmpty) return _Respaldo(equipo: equipo);
 
+    final descripcionFoto =
+        'Foto de ${equipo.titulo} (${equipo.categoria})';
     final url = equipo.fotos[indice.clamp(0, equipo.fotos.length - 1)];
     return Container(
       color: ColoresApp.nube,
       child: Image.network(
         url,
         fit: ajuste,
+        semanticLabel: descripcionFoto,
         filterQuality: FilterQuality.medium,
         // Mientras la foto llega se ve un indicador de carga.
         loadingBuilder: (context, hijo, progreso) {
@@ -61,21 +64,28 @@ class _Respaldo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final descripcionFoto =
+        'Ilustración de ${equipo.titulo} (${equipo.categoria})';
     final ilustracion = equipo.ilustracion;
     if (ilustracion != null) {
       return Image.asset(
         ilustracion,
         fit: BoxFit.cover,
+        semanticLabel: descripcionFoto,
         filterQuality: FilterQuality.medium,
       );
     }
-    return Container(
-      color: ColoresApp.nube,
-      alignment: Alignment.center,
-      child: const Icon(
-        Icons.devices_other_outlined,
-        size: 48,
-        color: ColoresApp.pizarra,
+    return Semantics(
+      image: true,
+      label: descripcionFoto,
+      child: Container(
+        color: ColoresApp.nube,
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.devices_other_outlined,
+          size: 48,
+          color: ColoresApp.pizarra,
+        ),
       ),
     );
   }
