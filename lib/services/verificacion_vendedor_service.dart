@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'ocr_cedula_service.dart';
 import 'publicacion_service.dart';
 import 'sesion_service.dart';
 
@@ -70,6 +71,85 @@ class VerificacionVendedorService {
     return limpia;
   }
 
+  static const List<String> _palabrasClaveCedula = [
+    'VENEZUELA',
+    'IDENTIDAD',
+    'CEDULA',
+    'REPUBLICA',
+    'BOLIVARIANA',
+    'NACIMIENTO',
+    'APELLIDOS',
+    'NOMBRES',
+    'EXPEDICION',
+    'VENCIMIENTO',
+  ];
+
+  /// Valida que el texto extraído por OCR corresponda a la cédula ingresada.
+  ///
+  /// Responde `null` si la validación pasa, o un mensaje de error claro si la
+  /// imagen no contiene texto legible o el número de cédula no coincide.
+  static String? validarTextoOcr(String textoOcr, String cedulaNumero) {
+    final cedulaNormalizada = normalizarCedula(cedulaNumero);
+    final digitosEsperados = cedulaNormalizada.replaceAll(RegExp(r'\D'), '');
+    if (digitosEsperados.isEmpty) {
+      return 'Número de cédula inválido.';
+    }
+
+    final sinAcentos = textoOcr
+        .toUpperCase()
+        .replaceAll('Á', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ú', 'U')
+        .replaceAll('Ü', 'U')
+        .replaceAll('Ñ', 'N');
+
+    final alfanumerico = sinAcentos.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (alfanumerico.length < 6) {
+      return 'No pudimos leer texto en la imagen. Sube una foto clara, '
+          'iluminada y enfocada de tu cédula de identidad.';
+    }
+
+    // Extrae todos los dígitos (quitando puntos, comas, espacios y guiones).
+    final soloDigitosOcr = sinAcentos.replaceAll(RegExp(r'\D'), '');
+    if (soloDigitosOcr.contains(digitosEsperados)) {
+      return null;
+    }
+
+    // Tolerancia ante confusiones típicas de OCR (O->0, I/L->1, S->5, B->8)
+    // en secuencias que parecen números de cédula.
+    final digitosCorregidos = sinAcentos
+        .replaceAll(RegExp(r'[\s.\-,]'), '')
+        .replaceAll('O', '0')
+        .replaceAll('I', '1')
+        .replaceAll('L', '1')
+        .replaceAll('S', '5')
+        .replaceAll('B', '8')
+        .replaceAll(RegExp(r'\D'), '');
+    if (digitosCorregidos.contains(digitosEsperados)) {
+      return null;
+    }
+
+    // Si el documento contiene palabras clave de una cédula venezolana,
+    // permitimos 1 dígito borroso por fotografía de teléfono.
+    final pareceCedula = _palabrasClaveCedula.any(sinAcentos.contains);
+    if (pareceCedula && soloDigitosOcr.length >= digitosEsperados.length) {
+      final n = digitosEsperados.length;
+      for (var i = 0; i <= soloDigitosOcr.length - n; i++) {
+        var diferencias = 0;
+        for (var j = 0; j < n; j++) {
+          if (soloDigitosOcr[i + j] != digitosEsperados[j]) diferencias++;
+        }
+        if (diferencias <= 1) return null;
+      }
+    }
+
+    return 'El número de cédula ($cedulaNormalizada) no coincide con el texto '
+        'detectado en la imagen. Sube una foto legible de tu cédula y verifica '
+        'que el número esté bien escrito.';
+  }
+
   /// Consulta si el usuario actual ya tiene identidad verificada.
   Future<VerificacionVendedor?> estadoActual({bool forzar = false}) async {
     final usuario = SesionService.instancia.usuario;
@@ -116,6 +196,27 @@ class VerificacionVendedorService {
     }
 
     final cedulaNormalizada = normalizarCedula(cedulaNumero);
+
+    // Validación OCR en el navegador: compara el texto de la foto con la cédula.
+    if (OcrCedulaService.disponible) {
+      String textoOcr;
+      try {
+        textoOcr = await OcrCedulaService.leerTexto(
+          fotoCedula.bytes,
+          fotoCedula.tipo,
+        );
+      } catch (_) {
+        throw const ErrorDePublicacion(
+          'No pudimos analizar la imagen con el lector OCR. Intenta de nuevo '
+          'con una foto más nítida.',
+        );
+      }
+      final errorOcr = validarTextoOcr(textoOcr, cedulaNormalizada);
+      if (errorOcr != null) {
+        throw ErrorDePublicacion(errorOcr);
+      }
+    }
+
     final ruta =
         '${usuario.id}/verificacion/cedula_${DateTime.now().millisecondsSinceEpoch}.${fotoCedula.extension}';
 

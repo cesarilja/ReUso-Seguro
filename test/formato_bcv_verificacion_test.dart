@@ -39,5 +39,47 @@ void main() {
         'V-12345678',
       );
     });
+
+    test('OCR acepta cédula válida (con puntos/espacios) y rechaza fotos ajenas', () {
+      // Cédula real con puntos y texto oficial
+      expect(
+        VerificacionVendedorService.validarTextoOcr(
+          'REPUBLICA BOLIVARIANA DE VENEZUELA\nCEDULA DE IDENTIDAD\nV 28.456.789',
+          'V-28456789',
+        ),
+        isNull,
+      );
+
+      // Cédula con 1 dígito borroso pero palabras clave de cédula venezolana
+      expect(
+        VerificacionVendedorService.validarTextoOcr(
+          'VENEZUELA CEDULA DE IDENTIDAD V 28.456.780 NOMBRES JUAN',
+          'V-28456789',
+        ),
+        isNull,
+      );
+
+      // Imagen sin texto (ej. foto de una silla o paisaje)
+      expect(
+        VerificacionVendedorService.validarTextoOcr('   ', 'V-28456789'),
+        isNotNull,
+      );
+
+      // Imagen con texto cualquiera o de otra cédula
+      expect(
+        VerificacionVendedorService.validarTextoOcr(
+          'Dell XPS 13 9370 Core i7 16GB RAM',
+          'V-28456789',
+        ),
+        isNotNull,
+      );
+      expect(
+        VerificacionVendedorService.validarTextoOcr(
+          'REPUBLICA BOLIVARIANA DE VENEZUELA V 12.345.678',
+          'V-28456789',
+        ),
+        isNotNull,
+      );
+    });
   });
 }

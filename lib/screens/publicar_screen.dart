@@ -1219,8 +1219,8 @@ class _TarjetaVerificacionIdentidad extends StatelessWidget {
             const SizedBox(height: 18),
             const Text(
               'Para evitar estafas, necesitamos que adjuntes una foto clara de '
-              'tu cédula de identidad. Solo se solicita una vez; al completarlo '
-              'podrás publicar cualquier equipo.',
+              'tu cédula de identidad. Validaremos automáticamente mediante OCR '
+              'que el número coincida con la imagen. Solo se solicita una vez.',
               style: Tipos.cuerpo,
             ),
             const SizedBox(height: 20),
@@ -1316,7 +1316,7 @@ class _TarjetaVerificacionIdentidad extends StatelessWidget {
             const SizedBox(height: 22),
             BotonPegatina(
               texto: verificando
-                  ? 'Verificando identidad…'
+                  ? 'Analizando cédula con OCR…'
                   : 'Verificar identidad y continuar',
               icono: Icons.verified_outlined,
               expandido: true,
