@@ -38,7 +38,7 @@ void main() {
     // Los 4 totales grandes.
     expect(find.text('En custodia'), findsOneWidget);
     expect(find.text('Comisiones'), findsOneWidget);
-    expect(find.text('\$70,00'), findsOneWidget);
+    expect(find.text('\$70.00'), findsOneWidget);
     // HU06 escenario 3: la liberación pendiente con su motivo.
     expect(find.textContaining('Falta tu cuenta para cobrar'), findsOneWidget);
     await tester.tap(find.text('Revisar ahora'));
@@ -51,7 +51,7 @@ void main() {
     expect(find.text('Descuadre en la bóveda'), findsOneWidget);
     expect(find.byIcon(Icons.gpp_bad), findsOneWidget);
     expect(find.textContaining('P-1003'), findsOneWidget);
-    expect(find.text('Diferencia: - \$276,00'), findsOneWidget);
+    expect(find.text('Diferencia: - \$276.00'), findsOneWidget);
     expect(find.textContaining('Qué hacer'), findsOneWidget);
   });
 

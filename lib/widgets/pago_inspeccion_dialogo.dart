@@ -5,6 +5,7 @@ import '../formato.dart';
 import '../models/pedido.dart';
 import '../services/pasarela.dart';
 import '../services/pedido_service.dart';
+import '../services/tasa_bcv_service.dart';
 import '../services/vendedor_service.dart';
 import '../tema.dart';
 import 'pasarela_widgets.dart';
@@ -44,7 +45,7 @@ class _DialogoPagoInspeccionState extends State<_DialogoPagoInspeccion> {
   final _cedula = TextEditingController();
   final _referencia = TextEditingController();
   late final _monto = TextEditingController(
-    text: widget.venta.costoInspeccion.toStringAsFixed(2).replaceAll('.', ','),
+    text: widget.venta.costoInspeccion.toStringAsFixed(2),
   );
 
   _Metodo _metodo = _Metodo.tarjeta;
@@ -53,6 +54,25 @@ class _DialogoPagoInspeccionState extends State<_DialogoPagoInspeccion> {
   bool _pagando = false;
   RespuestaBanco? _rechazo;
   String? _error;
+  TasaBcv? _tasaBcv;
+
+  double? get _costoBs =>
+      _tasaBcv?.convertirABolivares(widget.venta.costoInspeccion);
+
+  @override
+  void initState() {
+    super.initState();
+    TasaBcvService.instancia.obtener().then((tasa) {
+      if (!mounted) return;
+      setState(() {
+        _tasaBcv = tasa;
+        if (_metodo == _Metodo.pagoMovil) {
+          _monto.text =
+              tasa.convertirABolivares(widget.venta.costoInspeccion).toStringAsFixed(2);
+        }
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -83,7 +103,10 @@ class _DialogoPagoInspeccionState extends State<_DialogoPagoInspeccion> {
             'telefono': soloDigitos(_telefono.text),
             'cedula': _cedula.text.trim().toUpperCase(),
             'referencia': _referencia.text.trim().toUpperCase(),
-            'monto': leerMonto(_monto.text),
+            'monto': widget.venta.costoInspeccion,
+            'monto_bs': leerMonto(_monto.text),
+            'tasa_bcv': _tasaBcv?.tasa,
+            'moneda': 'VES',
           },
       };
 
@@ -193,6 +216,12 @@ class _DialogoPagoInspeccionState extends State<_DialogoPagoInspeccion> {
                       : (valor) => setState(() {
                             _metodo = valor.first;
                             _rechazo = null;
+                            if (_metodo == _Metodo.pagoMovil && _costoBs != null) {
+                              _monto.text = _costoBs!.toStringAsFixed(2);
+                            } else {
+                              _monto.text =
+                                  widget.venta.costoInspeccion.toStringAsFixed(2);
+                            }
                           }),
                 ),
                 const SizedBox(height: 14),
@@ -240,7 +269,11 @@ class _DialogoPagoInspeccionState extends State<_DialogoPagoInspeccion> {
                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                 )
               : const Icon(Icons.lock_outline),
-          label: Text(_pagando ? 'Procesando…' : 'Pagar ${formatearDolares(costo)}'),
+          label: Text(
+            _pagando
+                ? 'Procesando…'
+                : 'Pagar ${_metodo == _Metodo.pagoMovil && _costoBs != null ? formatearBolivares(_costoBs!) : formatearDolares(costo)}',
+          ),
         ),
       ],
     );
@@ -317,10 +350,26 @@ class _DialogoPagoInspeccionState extends State<_DialogoPagoInspeccion> {
       const DatoCopiable(titulo: 'Banco', valor: DatosDeCobro.bancoPagoMovil),
       const DatoCopiable(titulo: 'Teléfono', valor: DatosDeCobro.telefonoPagoMovil),
       const DatoCopiable(titulo: 'RIF', valor: DatosDeCobro.rif),
+      if (_tasaBcv != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 2),
+          child: Text(
+            'Tasa BCV del día (${_tasaBcv!.fechaCorta}): '
+            '${formatearBolivares(_tasaBcv!.tasa)} / USD',
+            style: Tipos.pequeno.copyWith(
+              fontWeight: FontWeight.w700,
+              color: ColoresApp.tinta,
+            ),
+          ),
+        ),
       DatoCopiable(
-        titulo: 'Monto',
-        valor: formatearDolares(costo),
-        copiar: costo.toStringAsFixed(2).replaceAll('.', ','),
+        titulo: _costoBs != null
+            ? 'Monto (${formatearDolares(costo)})'
+            : 'Monto',
+        valor: _costoBs != null
+            ? formatearBolivares(_costoBs!)
+            : formatearDolares(costo),
+        copiar: (_costoBs ?? costo).toStringAsFixed(2),
       ),
       const SizedBox(height: 10),
       DropdownButtonFormField<String>(
@@ -378,9 +427,22 @@ class _DialogoPagoInspeccionState extends State<_DialogoPagoInspeccion> {
             child: TextFormField(
               controller: _monto,
               enabled: !_pagando,
-              decoration: const InputDecoration(labelText: 'Monto (\$)'),
+              decoration: InputDecoration(
+                labelText: _costoBs != null ? 'Monto (Bs.)' : 'Monto (\$)',
+              ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              validator: (valor) => validarMonto(valor ?? ''),
+              validator: (valor) {
+                final base = validarMonto(valor ?? '');
+                if (base != null) return base;
+                final esperado = _costoBs;
+                final ingresado = leerMonto(valor ?? '');
+                if (esperado != null &&
+                    ingresado != null &&
+                    (ingresado - esperado).abs() > 1.0) {
+                  return 'Debe ser ${formatearBolivares(esperado)}.';
+                }
+                return null;
+              },
             ),
           ),
         ],

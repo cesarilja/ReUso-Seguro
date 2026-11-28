@@ -92,7 +92,7 @@ void main() {
       final exito = ReglasVenta.avisosDeCambio(
           {'pedido-1': EstadoPedido.liberacionPendiente}, [liberada]);
       expect(exito.single, contains('Te liberamos el pago'));
-      expect(exito.single, contains('\$230,00'));
+      expect(exito.single, contains('\$230.00'));
     });
 
     test('CP-06.4 Para el comprador, el dinero se está liberando', () {

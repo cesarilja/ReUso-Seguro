@@ -7,6 +7,7 @@ import '../formato.dart';
 import '../models/pedido.dart';
 import '../services/pasarela.dart';
 import '../services/pedido_service.dart';
+import '../services/tasa_bcv_service.dart';
 import '../tema.dart';
 import '../widgets/avisos.dart';
 import '../widgets/imagen_equipo.dart';
@@ -64,6 +65,14 @@ class _PagoScreenState extends State<PagoScreen> {
   final _referencia = TextEditingController();
   final _monto = TextEditingController();
 
+  // Tasa BCV del día para Pago Móvil en bolívares.
+  TasaBcv? _tasaBcv;
+  bool _cargandoTasa = true;
+
+  bool get _esPagoMovil => _metodo == MetodoPago.pagoMovil;
+
+  double? get _montoBs => _tasaBcv?.convertirABolivares(_pedido.monto);
+
   @override
   void initState() {
     super.initState();
@@ -75,6 +84,17 @@ class _PagoScreenState extends State<PagoScreen> {
       campo.addListener(_refrescar);
     }
     _focoCvv.addListener(_refrescar);
+    _cargarTasaBcv();
+  }
+
+  Future<void> _cargarTasaBcv({bool forzar = false}) async {
+    if (mounted) setState(() => _cargandoTasa = true);
+    final tasa = await TasaBcvService.instancia.obtener(forzar: forzar);
+    if (!mounted) return;
+    setState(() {
+      _tasaBcv = tasa;
+      _cargandoTasa = false;
+    });
   }
 
   void _refrescar() {
@@ -108,7 +128,12 @@ class _PagoScreenState extends State<PagoScreen> {
             'telefono': soloDigitos(_telefono.text),
             'cedula': _cedula.text.trim().toUpperCase(),
             'referencia': _referencia.text.trim().toUpperCase(),
-            'monto': leerMonto(_monto.text),
+            // La pasarela del servidor valida contra el monto del pedido (USD)
+            // y guardamos también el monto pagado en Bs. y la tasa BCV aplicada.
+            'monto': _pedido.monto,
+            'monto_bs': leerMonto(_monto.text),
+            'tasa_bcv': _tasaBcv?.tasa,
+            'moneda': 'VES',
           },
         MetodoPago.zelle => {
             'correo': _correo.text.trim(),
@@ -129,10 +154,13 @@ class _PagoScreenState extends State<PagoScreen> {
 
     // Prevención de errores (heurística 5): pagar es importante, así que se
     // confirma el monto antes de seguir.
+    final montoConfirmacion = _esPagoMovil && _montoBs != null
+        ? '${formatearBolivares(_montoBs!)} (${_pedido.montoFormateado})'
+        : _pedido.montoFormateado;
     final seguro = await showDialog<bool>(
       context: context,
       builder: (contexto) => AlertDialog(
-        title: Text('¿Pagar ${_pedido.montoFormateado}?'),
+        title: Text('¿Pagar $montoConfirmacion?'),
         content: Text(
           'Pagarás con ${metodo.nombre}. Tu dinero quedará en custodia: el '
           'vendedor no lo recibe hasta que el Hub apruebe el equipo.',
@@ -308,6 +336,7 @@ class _PagoScreenState extends State<PagoScreen> {
                     alElegir: _ocupado
                         ? null
                         : () => setState(() {
+                              if (_metodo != opcion) _monto.clear();
                               _metodo = opcion;
                               _error = null;
                               _rechazo = null;
@@ -365,7 +394,7 @@ class _PagoScreenState extends State<PagoScreen> {
                 else
                   BotonPegatina(
                     texto: _rechazo == null
-                        ? 'Pagar ${_pedido.montoFormateado}'
+                        ? 'Pagar ${_esPagoMovil && _montoBs != null ? formatearBolivares(_montoBs!) : _pedido.montoFormateado}'
                         : 'Intentar de nuevo',
                     icono: Icons.lock_outline,
                     expandido: true,
@@ -516,7 +545,8 @@ class _PagoScreenState extends State<PagoScreen> {
               copiar: soloDigitos(DatosDeCobro.telefonoPagoMovil),
             ),
             const DatoCopiable(titulo: 'RIF', valor: DatosDeCobro.rif),
-            _datoMonto(),
+            _datoTasaBcv(),
+            _datoMonto(enBolivares: true),
           ],
         ),
         const SizedBox(height: 18),
@@ -552,7 +582,11 @@ class _PagoScreenState extends State<PagoScreen> {
           icono: Icons.badge_outlined,
           validar: validarCedula,
         ),
-        _camposReferenciaYMonto('Número de referencia', '012345678912'),
+        _camposReferenciaYMonto(
+          'Número de referencia',
+          '012345678912',
+          enBolivares: true,
+        ),
       ],
     );
   }
@@ -568,7 +602,7 @@ class _PagoScreenState extends State<PagoScreen> {
           children: [
             const DatoCopiable(titulo: 'Correo', valor: DatosDeCobro.correoZelle),
             const DatoCopiable(titulo: 'A nombre de', valor: DatosDeCobro.titularZelle),
-            _datoMonto(),
+            _datoMonto(enBolivares: false),
           ],
         ),
         const SizedBox(height: 18),
@@ -583,18 +617,87 @@ class _PagoScreenState extends State<PagoScreen> {
           icono: Icons.alternate_email,
           validar: validarCorreo,
         ),
-        _camposReferenciaYMonto('Número de confirmación', 'AB12CD34'),
+        _camposReferenciaYMonto(
+          'Número de confirmación',
+          'AB12CD34',
+          enBolivares: false,
+        ),
       ],
     );
   }
 
-  Widget _datoMonto() => DatoCopiable(
-        titulo: 'Monto exacto',
-        valor: _pedido.montoFormateado,
-        copiar: _pedido.monto.toStringAsFixed(2).replaceAll('.', ','),
-      );
+  Widget _datoTasaBcv() {
+    final tasa = _tasaBcv;
+    final textoTasa = _cargandoTasa
+        ? 'Consultando tasa BCV del día…'
+        : tasa != null
+            ? '${formatearBolivares(tasa.tasa)} / USD (BCV · ${tasa.fechaCorta})'
+            : 'No disponible';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tasa BCV del día',
+                  style: Tipos.pequeno.copyWith(fontSize: 12),
+                ),
+                Text(
+                  textoTasa,
+                  style: Tipos.pequeno.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: ColoresApp.tinta,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Actualizar tasa BCV',
+            icon: const Icon(Icons.refresh, size: 18, color: ColoresApp.tinta),
+            onPressed: _cargandoTasa ? null : () => _cargarTasaBcv(forzar: true),
+          ),
+        ],
+      ),
+    );
+  }
 
-  Widget _camposReferenciaYMonto(String etiqueta, String pista) {
+  Widget _datoMonto({required bool enBolivares}) {
+    if (enBolivares && _montoBs != null) {
+      final bs = _montoBs!;
+      return DatoCopiable(
+        titulo: 'Monto exacto (${_pedido.montoFormateado})',
+        valor: formatearBolivares(bs),
+        copiar: bs.toStringAsFixed(2),
+      );
+    }
+    return DatoCopiable(
+      titulo: 'Monto exacto',
+      valor: _pedido.montoFormateado,
+      copiar: _pedido.monto.toStringAsFixed(2),
+    );
+  }
+
+  String? _validarMontoPagoMovil(String valor) {
+    final base = validarMonto(valor);
+    if (base != null) return base;
+    final esperado = _montoBs;
+    final ingresado = leerMonto(valor);
+    if (esperado != null && ingresado != null && (ingresado - esperado).abs() > 1.0) {
+      return 'El monto en Bs. debe coincidir con ${formatearBolivares(esperado)}.';
+    }
+    return null;
+  }
+
+  Widget _camposReferenciaYMonto(
+    String etiqueta,
+    String pista, {
+    required bool enBolivares,
+  }) {
+    final esperadoBs = _montoBs;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -609,11 +712,18 @@ class _PagoScreenState extends State<PagoScreen> {
         ),
         _Campo(
           controlador: _monto,
-          etiqueta: 'Monto que transferiste (USD)',
-          pista: _pedido.monto.toStringAsFixed(2).replaceAll('.', ','),
+          etiqueta: enBolivares
+              ? 'Monto que transferiste (Bs.)'
+              : 'Monto que transferiste (USD)',
+          pista: enBolivares && esperadoBs != null
+              ? esperadoBs.toStringAsFixed(2)
+              : _pedido.monto.toStringAsFixed(2),
+          ayuda: enBolivares && esperadoBs != null
+              ? 'Equivalente a ${_pedido.montoFormateado} a tasa BCV del día.'
+              : null,
           teclado: const TextInputType.numberWithOptions(decimal: true),
-          icono: Icons.attach_money,
-          validar: validarMonto,
+          icono: enBolivares ? Icons.payments_outlined : Icons.attach_money,
+          validar: enBolivares ? _validarMontoPagoMovil : validarMonto,
         ),
       ],
     );

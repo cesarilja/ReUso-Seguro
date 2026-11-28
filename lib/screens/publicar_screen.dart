@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/plan_inspeccion.dart';
 import '../services/publicacion_service.dart';
 import '../services/reputacion_service.dart';
+import '../services/verificacion_vendedor_service.dart';
 import '../tema.dart';
 import '../widgets/avisos.dart';
 import '../widgets/barra_superior.dart';
@@ -58,6 +59,14 @@ class _PublicarScreenState extends State<PublicarScreen> {
   /// Lo que valía [_hayCambios] la última vez que se dibujó la pantalla.
   bool _cambiosDibujados = false;
 
+  // Verificación de identidad del vendedor (foto de cédula antes de publicar).
+  final _cedula = TextEditingController();
+  VerificacionVendedor? _verificacion;
+  FotoElegida? _fotoCedula;
+  bool _cargandoVerificacion = true;
+  bool _verificando = false;
+  String? _errorVerificacion;
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +81,14 @@ class _PublicarScreenState extends State<PublicarScreen> {
     ReputacionService.instancia.mia().then((reputacion) {
       if (mounted && reputacion != null) {
         setState(() => _tasaComision = reputacion.tasaComision);
+      }
+    });
+    VerificacionVendedorService.instancia.estadoActual().then((estado) {
+      if (mounted) {
+        setState(() {
+          _verificacion = estado;
+          _cargandoVerificacion = false;
+        });
       }
     });
   }
@@ -94,7 +111,82 @@ class _PublicarScreenState extends State<PublicarScreen> {
     _precio.dispose();
     _detalles.dispose();
     _descripcion.dispose();
+    _cedula.dispose();
     super.dispose();
+  }
+
+  Future<void> _elegirFotoCedula() async {
+    if (_verificando) return;
+    setState(() => _errorVerificacion = null);
+    try {
+      final archivo = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        imageQuality: 85,
+      );
+      if (archivo == null || !mounted) return;
+      final foto = FotoElegida(
+        bytes: await archivo.readAsBytes(),
+        nombre: archivo.name,
+        tipo: _tipoDe(archivo),
+      );
+      final problema = ReglasPublicacion.foto(foto);
+      setState(() {
+        if (problema != null) {
+          _errorVerificacion = problema;
+        } else {
+          _fotoCedula = foto;
+        }
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _errorVerificacion = 'No pudimos abrir la imagen. Intenta de nuevo.';
+        });
+      }
+    }
+  }
+
+  Future<void> _enviarVerificacion() async {
+    if (_verificando) return;
+    final errorCedula = VerificacionVendedorService.validarCedula(_cedula.text);
+    if (errorCedula != null) {
+      setState(() => _errorVerificacion = errorCedula);
+      return;
+    }
+    if (_fotoCedula == null) {
+      setState(() {
+        _errorVerificacion =
+            'Adjunta una foto legible de tu cédula de identidad para continuar.';
+      });
+      return;
+    }
+
+    setState(() {
+      _verificando = true;
+      _errorVerificacion = null;
+    });
+    try {
+      final resultado = await VerificacionVendedorService.instancia.verificar(
+        cedulaNumero: _cedula.text,
+        fotoCedula: _fotoCedula!,
+      );
+      if (!mounted) return;
+      setState(() {
+        _verificacion = resultado;
+        _verificando = false;
+      });
+      mostrarAviso(
+        context,
+        'Identidad verificada. Ya puedes publicar tus equipos.',
+      );
+    } on ErrorDePublicacion catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _errorVerificacion = error.mensaje;
+        _verificando = false;
+      });
+    }
   }
 
   bool get _hayCambios =>
@@ -497,11 +589,50 @@ class _PublicarScreenState extends State<PublicarScreen> {
                                 style: Tipos.cuerpo,
                               ),
                               const SizedBox(height: 24),
-                              Pegatina(
-                                radio: 22,
-                                child: Padding(
-                                  padding: EdgeInsets.all(ancha ? 28 : 18),
-                                  child: Form(
+                              if (_cargandoVerificacion)
+                                const Pegatina(
+                                  radio: 22,
+                                  child: Padding(
+                                    padding: EdgeInsets.all(28),
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        color: ColoresApp.tinta,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else if (_verificacion == null)
+                                _TarjetaVerificacionIdentidad(
+                                  cedula: _cedula,
+                                  fotoCedula: _fotoCedula,
+                                  verificando: _verificando,
+                                  error: _errorVerificacion,
+                                  decoracion: _decoracion(
+                                    ejemplo: 'Ejemplo: V-12345678',
+                                    icono: Icons.badge_outlined,
+                                    ayuda:
+                                        'Ingresa tu cédula (V o E) tal como aparece en el documento.',
+                                  ),
+                                  alElegirFoto: _elegirFotoCedula,
+                                  alQuitarFoto: () =>
+                                      setState(() => _fotoCedula = null),
+                                  alVerificar: _enviarVerificacion,
+                                )
+                              else ...[
+                                _Mensaje(
+                                  icono: Icons.verified_user,
+                                  fondo: const Color(0xFFE7F5ED),
+                                  color: ColoresApp.verde,
+                                  texto:
+                                      'Identidad verificada (${_verificacion!.cedulaNumero}). '
+                                      'Ya puedes publicar equipos en el catálogo.',
+                                ),
+                                const SizedBox(height: 16),
+                                Pegatina(
+                                  radio: 22,
+                                  child: Padding(
+                                    padding: EdgeInsets.all(ancha ? 28 : 18),
+                                    child: Form(
                                     key: _formulario,
                                     child: Column(
                                       crossAxisAlignment:
@@ -619,6 +750,7 @@ class _PublicarScreenState extends State<PublicarScreen> {
                                   ),
                                 ),
                               ),
+                              ],
                             ],
                           ),
                         ),
@@ -1014,6 +1146,184 @@ class _Mensaje extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+/// Paso previo de verificación de identidad: foto de cédula del vendedor.
+class _TarjetaVerificacionIdentidad extends StatelessWidget {
+  const _TarjetaVerificacionIdentidad({
+    required this.cedula,
+    required this.fotoCedula,
+    required this.verificando,
+    required this.error,
+    required this.decoracion,
+    required this.alElegirFoto,
+    required this.alQuitarFoto,
+    required this.alVerificar,
+  });
+
+  final TextEditingController cedula;
+  final FotoElegida? fotoCedula;
+  final bool verificando;
+  final String? error;
+  final InputDecoration decoracion;
+  final VoidCallback alElegirFoto;
+  final VoidCallback alQuitarFoto;
+  final VoidCallback alVerificar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Pegatina(
+      radio: 22,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: ColoresApp.lila,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.verified_user_outlined,
+                    color: ColoresApp.tinta,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Verifica tu identidad antes de publicar',
+                        style: Tipos.subtitulo,
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Paso único de seguridad para proteger a compradores y vendedores.',
+                        style: Tipos.pequeno,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Para evitar estafas, necesitamos que adjuntes una foto clara de '
+              'tu cédula de identidad. Solo se solicita una vez; al completarlo '
+              'podrás publicar cualquier equipo.',
+              style: Tipos.cuerpo,
+            ),
+            const SizedBox(height: 20),
+            const _Etiqueta('Número de cédula'),
+            TextFormField(
+              controller: cedula,
+              enabled: !verificando,
+              textCapitalization: TextCapitalization.characters,
+              decoration: decoracion,
+            ),
+            const SizedBox(height: 20),
+            const _Etiqueta('Foto de tu cédula de identidad'),
+            if (fotoCedula == null)
+              OutlinedButton.icon(
+                onPressed: verificando ? null : alElegirFoto,
+                icon: const Icon(Icons.add_a_photo_outlined),
+                label: const Text('Adjuntar imagen de la cédula'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: ColoresApp.tinta,
+                  side: const BorderSide(color: ColoresApp.tinta, width: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: ColoresApp.nube,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: ColoresApp.tinta, width: 2),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.memory(
+                        fotoCedula!.bytes,
+                        height: 200,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.check_circle,
+                          color: ColoresApp.verde,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            fotoCedula!.nombre,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Tipos.pequeno.copyWith(
+                              color: ColoresApp.tinta,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: verificando ? null : alElegirFoto,
+                          child: const Text('Cambiar'),
+                        ),
+                        TextButton(
+                          onPressed: verificando ? null : alQuitarFoto,
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFFB3261E),
+                          ),
+                          child: const Text('Quitar'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            if (error != null) ...[
+              const SizedBox(height: 14),
+              _Mensaje(
+                icono: Icons.error_outline,
+                fondo: const Color(0xFFFBE9E8),
+                color: const Color(0xFFB3261E),
+                texto: error!,
+              ),
+            ],
+            const SizedBox(height: 22),
+            BotonPegatina(
+              texto: verificando
+                  ? 'Verificando identidad…'
+                  : 'Verificar identidad y continuar',
+              icono: Icons.verified_outlined,
+              expandido: true,
+              alTocar: verificando ? () {} : alVerificar,
+            ),
+          ],
+        ),
       ),
     );
   }

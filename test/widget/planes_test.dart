@@ -56,9 +56,9 @@ void main() {
       tester,
       const ResumenCobro(precio: 250, plan: PlanInspeccion.basica, express: false),
     );
-    expect(find.text('- \$10,00'), findsOneWidget); // inspección básica
-    expect(find.text('- \$12,50'), findsOneWidget); // comisión del 5 %
-    expect(find.text('\$227,50'), findsOneWidget);
+    expect(find.text('- \$10.00'), findsOneWidget); // inspección básica
+    expect(find.text('- \$12.50'), findsOneWidget); // comisión del 5 %
+    expect(find.text('\$227.50'), findsOneWidget);
     expect(find.textContaining('No se devuelve si el equipo se rechaza'), findsOneWidget);
   });
 
